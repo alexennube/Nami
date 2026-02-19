@@ -250,6 +250,11 @@ export async function registerRoutes(
     res.json(config);
   });
 
+  app.get("/api/heartbeat/logs", async (_req, res) => {
+    const logs = await storage.getHeartbeatLogs();
+    res.json(logs);
+  });
+
   app.put("/api/heartbeat", async (req, res) => {
     try {
       const config = await storage.updateHeartbeatConfig(req.body);

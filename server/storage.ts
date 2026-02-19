@@ -1,4 +1,4 @@
-import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, Thought, Memory, HeartbeatConfig, EngineState } from "@shared/schema";
+import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, Thought, Memory, HeartbeatConfig, HeartbeatLog, EngineState } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -41,6 +41,9 @@ export interface IStorage {
   getHeartbeatConfig(): Promise<HeartbeatConfig>;
   updateHeartbeatConfig(updates: Partial<HeartbeatConfig>): Promise<HeartbeatConfig>;
 
+  getHeartbeatLogs(): Promise<HeartbeatLog[]>;
+  addHeartbeatLog(log: Omit<HeartbeatLog, "id">): Promise<HeartbeatLog>;
+
   getEngineState(): Promise<EngineState>;
   setEngineState(state: EngineState): Promise<EngineState>;
 }
@@ -53,6 +56,7 @@ export class MemStorage implements IStorage {
   private chatHistory: ChatMessage[] = [];
   private thoughts: Thought[] = [];
   private memories: Map<string, Memory> = new Map();
+  private heartbeatLogs: HeartbeatLog[] = [];
   private heartbeatConfig: HeartbeatConfig = {
     enabled: false,
     intervalSeconds: 30,
@@ -259,6 +263,19 @@ export class MemStorage implements IStorage {
   async updateHeartbeatConfig(updates: Partial<HeartbeatConfig>): Promise<HeartbeatConfig> {
     this.heartbeatConfig = { ...this.heartbeatConfig, ...updates };
     return { ...this.heartbeatConfig };
+  }
+
+  async getHeartbeatLogs(): Promise<HeartbeatLog[]> {
+    return [...this.heartbeatLogs].reverse();
+  }
+
+  async addHeartbeatLog(log: Omit<HeartbeatLog, "id">): Promise<HeartbeatLog> {
+    const entry: HeartbeatLog = { ...log, id: randomUUID() };
+    this.heartbeatLogs.push(entry);
+    if (this.heartbeatLogs.length > 100) {
+      this.heartbeatLogs = this.heartbeatLogs.slice(-100);
+    }
+    return entry;
   }
 
   async getEngineState(): Promise<EngineState> {

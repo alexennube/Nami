@@ -132,6 +132,24 @@ export const heartbeatConfigSchema = z.object({
 });
 export type HeartbeatConfig = z.infer<typeof heartbeatConfigSchema>;
 
+export const heartbeatLogSchema = z.object({
+  id: z.string(),
+  beatNumber: z.number(),
+  status: z.enum(["active", "sleep", "error"]),
+  attempts: z.number().default(1),
+  summary: z.string(),
+  details: z.array(z.object({
+    attempt: z.number(),
+    action: z.string(),
+    result: z.string(),
+    tokensUsed: z.number(),
+  })),
+  totalTokens: z.number().default(0),
+  timestamp: z.string(),
+  duration: z.number().default(0),
+});
+export type HeartbeatLog = z.infer<typeof heartbeatLogSchema>;
+
 export const engineStatusSchema = z.object({
   state: EngineState,
   heartbeatCount: z.number(),

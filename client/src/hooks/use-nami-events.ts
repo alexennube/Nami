@@ -30,6 +30,7 @@ export function useNamiEvents() {
           queryClient.invalidateQueries({ queryKey: ["/api/chat"] });
           queryClient.invalidateQueries({ queryKey: ["/api/engine/status"] });
           queryClient.invalidateQueries({ queryKey: ["/api/heartbeat"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/heartbeat/logs"] });
           queryClient.invalidateQueries({ queryKey: ["/api/thoughts"] });
           break;
         case "thought":

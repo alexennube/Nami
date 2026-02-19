@@ -102,27 +102,33 @@ export function stopHeartbeat() {
 }
 
 async function executeHeartbeat(instruction: string) {
+  const startTime = Date.now();
+  const hbConfig = await storage.getHeartbeatConfig();
+  const beatNumber = hbConfig.totalBeats + 1;
+  const details: Array<{ attempt: number; action: string; result: string; tokensUsed: number }> = [];
+  let totalTokens = 0;
+
   const agents = await storage.getAgents();
   const swarms = await storage.getSwarms();
   const activeAgents = agents.filter((a) => a.status === "running");
   const idleAgents = agents.filter((a) => a.status === "idle");
+  const activeSwarms = swarms.filter((s) => s.status === "active");
 
   const contextParts = [
     `Active agents: ${activeAgents.length}/${agents.length}`,
     `Idle agents: ${idleAgents.length}`,
     `Total swarms: ${swarms.length}`,
-    `Active swarms: ${swarms.filter((s) => s.status === "active").length}`,
+    `Active swarms: ${activeSwarms.length}`,
   ];
-
   const systemContext = contextParts.join(". ");
 
   await storage.addThought({
-    content: `Heartbeat triggered. ${systemContext}`,
+    content: `Heartbeat #${beatNumber} triggered. ${systemContext}`,
     source: "nami",
     type: "observation",
   });
 
-  if (activeAgents.length === 0 && swarms.filter((s) => s.status === "active").length === 0) {
+  if (activeAgents.length === 0 && activeSwarms.length === 0) {
     await storage.addChatMessage({
       role: "assistant",
       content: "< SLEEP >",
@@ -132,38 +138,109 @@ async function executeHeartbeat(instruction: string) {
       autonomous: true,
     });
 
-    await eventBus.emit("heartbeat", { status: "sleep", context: systemContext }, "nami");
-    log("Heartbeat: SLEEP (no active work)", "engine");
+    details.push({ attempt: 1, action: "status_check", result: "No active work. Entering sleep.", tokensUsed: 0 });
+
+    await storage.addHeartbeatLog({
+      beatNumber,
+      status: "sleep",
+      attempts: 1,
+      summary: "No active agents or swarms. System idle.",
+      details,
+      totalTokens: 0,
+      timestamp: new Date().toISOString(),
+      duration: Date.now() - startTime,
+    });
+
+    await eventBus.emit("heartbeat", { status: "sleep", beatNumber, context: systemContext }, "nami");
+    log(`Heartbeat #${beatNumber}: SLEEP (no active work)`, "engine");
     return;
   }
 
+  const config = await storage.getConfig();
+  const maxAttempts = 3;
+  const conversationHistory: OpenRouterMessage[] = [
+    { role: "system", content: NAMI_SYSTEM_PROMPT + `\n\nYou are in HEARTBEAT mode. You should actively check on all agents and swarms, take actions if needed, and keep working until you've completed your assessment. After each action, indicate if you need to do more with [CONTINUE] or if you're done with [DONE]. Be concise but thorough.` },
+    { role: "user", content: `[HEARTBEAT #${beatNumber}] ${instruction}\n\nCurrent state: ${systemContext}` },
+  ];
+
   try {
-    const config = await storage.getConfig();
-    const messages: OpenRouterMessage[] = [
-      { role: "system", content: NAMI_SYSTEM_PROMPT },
-      { role: "user", content: `[HEARTBEAT] ${instruction}\n\nCurrent state: ${systemContext}` },
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const engineState = await storage.getEngineState();
+      if (engineState !== "running") break;
+
+      const { content, tokensUsed } = await chatCompletion(conversationHistory, { model: config.defaultModel });
+      totalTokens += tokensUsed;
+
+      const actionSummary = content.length > 150 ? content.substring(0, 150) + "..." : content;
+      details.push({ attempt, action: `heartbeat_cycle_${attempt}`, result: actionSummary, tokensUsed });
+
+      conversationHistory.push({ role: "assistant", content });
+
+      if (content.includes("[DONE]") || !content.includes("[CONTINUE]") || attempt === maxAttempts) {
+        break;
+      }
+
+      conversationHistory.push({ role: "user", content: `[HEARTBEAT CONTINUE] Continue your assessment. What else needs attention?` });
+      log(`Heartbeat #${beatNumber}: attempt ${attempt} continuing...`, "engine");
+    }
+
+    const summaryMessages: OpenRouterMessage[] = [
+      { role: "system", content: "Summarize the following heartbeat effort in 1-2 sentences. Be concise and focus on what was checked/done." },
+      { role: "user", content: details.map(d => `Attempt ${d.attempt}: ${d.result}`).join("\n") },
     ];
 
-    const { content, tokensUsed } = await chatCompletion(messages, { model: config.defaultModel });
+    let summary: string;
+    try {
+      const summaryResult = await chatCompletion(summaryMessages, { model: config.defaultModel, maxTokens: 150 });
+      summary = summaryResult.content;
+      totalTokens += summaryResult.tokensUsed;
+    } catch {
+      summary = details.map(d => d.result).join(" | ");
+    }
 
+    const lastResponse = details[details.length - 1]?.result || "";
     await storage.addChatMessage({
       role: "assistant",
-      content,
+      content: lastResponse.replace("[DONE]", "").replace("[CONTINUE]", "").trim(),
       agentId: "nami",
       agentName: "Nami",
-      tokensUsed,
+      tokensUsed: totalTokens,
       autonomous: true,
     });
 
+    await storage.addHeartbeatLog({
+      beatNumber,
+      status: "active",
+      attempts: details.length,
+      summary,
+      details,
+      totalTokens,
+      timestamp: new Date().toISOString(),
+      duration: Date.now() - startTime,
+    });
+
     await storage.addThought({
-      content: `Heartbeat response: ${content.substring(0, 200)}`,
+      content: `Heartbeat #${beatNumber} complete (${details.length} attempts, ${totalTokens} tokens): ${summary}`,
       source: "nami",
       type: "reflection",
     });
 
-    await eventBus.emit("heartbeat", { status: "active", tokensUsed, response: content.substring(0, 200) }, "nami");
-    log(`Heartbeat: active response, ${tokensUsed} tokens`, "engine");
+    await eventBus.emit("heartbeat", { status: "active", beatNumber, attempts: details.length, tokensUsed: totalTokens, summary }, "nami");
+    log(`Heartbeat #${beatNumber}: ${details.length} attempts, ${totalTokens} tokens`, "engine");
   } catch (err: any) {
+    details.push({ attempt: details.length + 1, action: "error", result: err.message, tokensUsed: 0 });
+
+    await storage.addHeartbeatLog({
+      beatNumber,
+      status: "error",
+      attempts: details.length,
+      summary: `Error: ${err.message}`,
+      details,
+      totalTokens,
+      timestamp: new Date().toISOString(),
+      duration: Date.now() - startTime,
+    });
+
     await storage.addChatMessage({
       role: "assistant",
       content: "< SLEEP >",
@@ -172,7 +249,9 @@ async function executeHeartbeat(instruction: string) {
       tokensUsed: 0,
       autonomous: true,
     });
-    log(`Heartbeat inference failed: ${err.message}`, "engine");
+
+    await eventBus.emit("heartbeat", { status: "error", beatNumber, error: err.message }, "nami");
+    log(`Heartbeat #${beatNumber} error: ${err.message}`, "engine");
   }
 }
 
