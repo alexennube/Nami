@@ -1,4 +1,4 @@
-import type { Agent, InsertAgent, Swarm, InsertSwarm, Workflow, InsertWorkflow, NamiEvent, NamiConfig, SystemStats, AgentMessage } from "@shared/schema";
+import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -14,12 +14,6 @@ export interface IStorage {
   updateSwarm(id: string, updates: Partial<Swarm>): Promise<Swarm | undefined>;
   deleteSwarm(id: string): Promise<boolean>;
 
-  getWorkflows(): Promise<Workflow[]>;
-  getWorkflow(id: string): Promise<Workflow | undefined>;
-  createWorkflow(workflow: InsertWorkflow): Promise<Workflow>;
-  updateWorkflow(id: string, updates: Partial<Workflow>): Promise<Workflow | undefined>;
-  deleteWorkflow(id: string): Promise<boolean>;
-
   getEvents(): Promise<NamiEvent[]>;
   addEvent(event: Omit<NamiEvent, "id" | "timestamp">): Promise<NamiEvent>;
 
@@ -30,14 +24,18 @@ export interface IStorage {
 
   getMessages(agentId?: string, swarmId?: string): Promise<AgentMessage[]>;
   addMessage(message: Omit<AgentMessage, "id" | "timestamp">): Promise<AgentMessage>;
+
+  getChatHistory(): Promise<ChatMessage[]>;
+  addChatMessage(message: Omit<ChatMessage, "id" | "timestamp">): Promise<ChatMessage>;
+  clearChatHistory(): Promise<void>;
 }
 
 export class MemStorage implements IStorage {
   private agents: Map<string, Agent> = new Map();
   private swarms: Map<string, Swarm> = new Map();
-  private workflows: Map<string, Workflow> = new Map();
   private events: NamiEvent[] = [];
   private messages: AgentMessage[] = [];
+  private chatHistory: ChatMessage[] = [];
   private config: NamiConfig = {
     openRouterApiKey: process.env.OPENROUTER_API_KEY || "",
     defaultModel: "openai/gpt-4o",
@@ -88,7 +86,29 @@ export class MemStorage implements IStorage {
   async createSwarm(data: InsertSwarm): Promise<Swarm> {
     const id = randomUUID();
     const now = new Date().toISOString();
-    const swarm: Swarm = { ...data, id, createdAt: now, completedAt: null, queenId: null, agentIds: [], progress: 0 };
+    const steps = (data.steps || []).map((s, i) => ({
+      id: randomUUID(),
+      name: s.name,
+      type: s.type,
+      instruction: s.instruction,
+      status: "pending" as const,
+      agentId: s.agentId || null,
+      output: null,
+      order: i,
+    }));
+    const swarm: Swarm = {
+      id,
+      name: data.name,
+      goal: data.goal,
+      objective: data.objective,
+      status: data.status,
+      queenId: null,
+      agentIds: [],
+      steps,
+      createdAt: now,
+      completedAt: null,
+      progress: 0,
+    };
     this.swarms.set(id, swarm);
     return swarm;
   }
@@ -103,35 +123,6 @@ export class MemStorage implements IStorage {
 
   async deleteSwarm(id: string): Promise<boolean> {
     return this.swarms.delete(id);
-  }
-
-  async getWorkflows(): Promise<Workflow[]> {
-    return Array.from(this.workflows.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }
-
-  async getWorkflow(id: string): Promise<Workflow | undefined> {
-    return this.workflows.get(id);
-  }
-
-  async createWorkflow(data: InsertWorkflow): Promise<Workflow> {
-    const id = randomUUID();
-    const now = new Date().toISOString();
-    const steps = data.steps.map((s) => ({ ...s, id: randomUUID() }));
-    const workflow: Workflow = { ...data, id, steps, status: "pending", createdAt: now, completedAt: null };
-    this.workflows.set(id, workflow);
-    return workflow;
-  }
-
-  async updateWorkflow(id: string, updates: Partial<Workflow>): Promise<Workflow | undefined> {
-    const workflow = this.workflows.get(id);
-    if (!workflow) return undefined;
-    const updated = { ...workflow, ...updates };
-    this.workflows.set(id, updated);
-    return updated;
-  }
-
-  async deleteWorkflow(id: string): Promise<boolean> {
-    return this.workflows.delete(id);
   }
 
   async getEvents(): Promise<NamiEvent[]> {
@@ -162,7 +153,6 @@ export class MemStorage implements IStorage {
       activeAgents: agents.filter((a) => a.status === "running").length,
       totalSwarms: swarms.length,
       activeSwarms: swarms.filter((s) => s.status === "active").length,
-      totalWorkflows: this.workflows.size,
       totalTokensUsed: agents.reduce((sum, a) => sum + a.tokensUsed, 0),
       totalMessagesProcessed: agents.reduce((sum, a) => sum + a.messagesProcessed, 0),
       uptime: Date.now() - this.startTime,
@@ -181,6 +171,21 @@ export class MemStorage implements IStorage {
     this.messages.push(msg);
     if (this.messages.length > 1000) this.messages = this.messages.slice(-1000);
     return msg;
+  }
+
+  async getChatHistory(): Promise<ChatMessage[]> {
+    return [...this.chatHistory];
+  }
+
+  async addChatMessage(data: Omit<ChatMessage, "id" | "timestamp">): Promise<ChatMessage> {
+    const msg: ChatMessage = { ...data, id: randomUUID(), timestamp: new Date().toISOString() };
+    this.chatHistory.push(msg);
+    if (this.chatHistory.length > 200) this.chatHistory = this.chatHistory.slice(-200);
+    return msg;
+  }
+
+  async clearChatHistory(): Promise<void> {
+    this.chatHistory = [];
   }
 }
 

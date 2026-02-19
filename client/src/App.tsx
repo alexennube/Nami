@@ -10,9 +10,9 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useNamiEvents } from "@/hooks/use-nami-events";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
+import Chat from "@/pages/chat";
 import Spawns from "@/pages/spawns";
 import Swarms from "@/pages/swarms";
-import Workflows from "@/pages/workflows";
 import Activity from "@/pages/activity";
 import Settings from "@/pages/settings";
 
@@ -20,9 +20,9 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
+      <Route path="/chat" component={Chat} />
       <Route path="/spawns" component={Spawns} />
       <Route path="/swarms" component={Swarms} />
-      <Route path="/workflows" component={Workflows} />
       <Route path="/activity" component={Activity} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />

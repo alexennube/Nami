@@ -16,14 +16,13 @@ export function useNamiEvents() {
           break;
         case "swarm_created":
         case "swarm_completed":
+        case "step_completed":
           queryClient.invalidateQueries({ queryKey: ["/api/swarms"] });
           queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
           break;
-        case "workflow_step_completed":
-          queryClient.invalidateQueries({ queryKey: ["/api/workflows"] });
-          break;
         case "message_sent":
           queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/chat"] });
           break;
         default:
           queryClient.invalidateQueries({ queryKey: ["/api/stats"] });

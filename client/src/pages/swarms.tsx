@@ -13,19 +13,42 @@ import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Network, Plus, Crown, Bot, Play, Pause, Square, Trash2, Target, Eye } from "lucide-react";
-import type { Swarm, Agent } from "@shared/schema";
+import { Network, Plus, Crown, Bot, Play, Pause, Trash2, Target, Code, MessageSquare, ChevronDown, ChevronRight } from "lucide-react";
+import type { Swarm, Agent, SwarmStep } from "@shared/schema";
+
+type NewStep = { name: string; type: "prompt" | "code"; instruction: string };
 
 function CreateSwarmDialog() {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [goal, setGoal] = useState("");
   const [objective, setObjective] = useState("");
+  const [steps, setSteps] = useState<NewStep[]>([]);
+  const [showSteps, setShowSteps] = useState(false);
   const { toast } = useToast();
+
+  function addStep() {
+    setSteps([...steps, { name: "", type: "prompt", instruction: "" }]);
+    setShowSteps(true);
+  }
+
+  function updateStep(i: number, updates: Partial<NewStep>) {
+    const updated = [...steps];
+    updated[i] = { ...updated[i], ...updates };
+    setSteps(updated);
+  }
+
+  function removeStep(i: number) {
+    setSteps(steps.filter((_, idx) => idx !== i));
+  }
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/swarms", { name, goal, objective, status: "pending" });
+      const payload: any = { name, goal, objective, status: "pending" };
+      if (steps.length > 0) {
+        payload.steps = steps.filter((s) => s.name && s.instruction);
+      }
+      const res = await apiRequest("POST", "/api/swarms", payload);
       return res.json();
     },
     onSuccess: () => {
@@ -36,6 +59,7 @@ function CreateSwarmDialog() {
       setName("");
       setGoal("");
       setObjective("");
+      setSteps([]);
       toast({ title: "Swarm created", description: `${name} swarm with SwarmQueen is ready.` });
     },
     onError: (err: Error) => {
@@ -51,10 +75,10 @@ function CreateSwarmDialog() {
           Create Swarm
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Swarm</DialogTitle>
-          <DialogDescription>A swarm coordinates multiple agents toward a single goal. A SwarmQueen will be automatically assigned to manage and QA the swarm.</DialogDescription>
+          <DialogDescription>A swarm coordinates agents toward a goal. Define prompt-based or code-based workflow steps, or leave empty and let Nami manage it.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4 py-2">
           <div className="flex flex-col gap-2">
@@ -72,9 +96,59 @@ function CreateSwarmDialog() {
               placeholder="Describe the specific outcome the swarm should achieve..."
               value={objective}
               onChange={(e) => setObjective(e.target.value)}
-              className="resize-none min-h-[100px]"
+              className="resize-none min-h-[80px]"
               data-testid="input-swarm-objective"
             />
+          </div>
+
+          <div className="border-t pt-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <Label className="text-sm">Workflow Steps (optional)</Label>
+              <Button variant="outline" size="sm" onClick={addStep} data-testid="button-add-step">
+                <Plus className="w-3 h-3 mr-1" /> Add Step
+              </Button>
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1">Define the execution steps as prompts or code blocks</p>
+
+            {steps.length > 0 && (
+              <div className="flex flex-col gap-3 mt-3">
+                {steps.map((step, i) => (
+                  <Card key={i} className="p-3">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-mono text-muted-foreground shrink-0">Step {i + 1}</span>
+                        <Input
+                          placeholder="Step name"
+                          value={step.name}
+                          onChange={(e) => updateStep(i, { name: e.target.value })}
+                          className="flex-1"
+                          data-testid={`input-step-name-${i}`}
+                        />
+                        <Select value={step.type} onValueChange={(v) => updateStep(i, { type: v as "prompt" | "code" })}>
+                          <SelectTrigger className="w-[100px]" data-testid={`select-step-type-${i}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="prompt">Prompt</SelectItem>
+                            <SelectItem value="code">Code</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Button size="icon" variant="ghost" onClick={() => removeStep(i)} data-testid={`button-remove-step-${i}`}>
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                      <Textarea
+                        placeholder={step.type === "prompt" ? "Enter the prompt instruction..." : "Enter executable code..."}
+                        value={step.instruction}
+                        onChange={(e) => updateStep(i, { instruction: e.target.value })}
+                        className={`resize-none min-h-[60px] ${step.type === "code" ? "font-mono text-xs" : ""}`}
+                        data-testid={`input-step-instruction-${i}`}
+                      />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>
@@ -85,6 +159,41 @@ function CreateSwarmDialog() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function StepsList({ steps }: { steps: SwarmStep[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (steps.length === 0) return null;
+
+  return (
+    <div className="mt-3">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider hover-elevate rounded-md px-1 py-0.5"
+        data-testid="button-toggle-steps"
+      >
+        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        {steps.length} workflow step{steps.length !== 1 ? "s" : ""}
+      </button>
+      {expanded && (
+        <div className="flex flex-col gap-1 mt-2">
+          {steps.map((step, i) => (
+            <div key={step.id} className="flex items-center gap-2 p-1.5 rounded-md bg-muted/30" data-testid={`step-${step.id}`}>
+              <span className="text-[10px] font-mono text-muted-foreground shrink-0 w-4 text-right">{i + 1}</span>
+              {step.type === "prompt" ? (
+                <MessageSquare className="w-3 h-3 text-blue-500 shrink-0" />
+              ) : (
+                <Code className="w-3 h-3 text-emerald-500 shrink-0" />
+              )}
+              <span className="text-xs truncate flex-1">{step.name}</span>
+              <StatusBadge status={step.status} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -106,6 +215,20 @@ function SwarmCard({ swarm }: { swarm: Swarm }) {
     },
     onError: (err: Error) => {
       toast({ title: "Action failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const runMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/swarms/${swarm.id}/run`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/swarms"] });
+      toast({ title: "Swarm execution started" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to run", description: err.message, variant: "destructive" });
     },
   });
 
@@ -156,6 +279,8 @@ function SwarmCard({ swarm }: { swarm: Swarm }) {
           </div>
         )}
 
+        <StepsList steps={swarm.steps || []} />
+
         <div className="mt-3">
           <div className="flex items-center justify-between gap-2 mb-1">
             <span className="text-[10px] text-muted-foreground">Progress</span>
@@ -180,9 +305,16 @@ function SwarmCard({ swarm }: { swarm: Swarm }) {
 
         <div className="flex items-center gap-1 mt-3 flex-wrap">
           {swarm.status === "pending" && (
-            <Button size="sm" variant="outline" onClick={() => actionMutation.mutate("activate")} disabled={actionMutation.isPending} data-testid={`button-activate-swarm-${swarm.id}`}>
-              <Play className="w-3 h-3 mr-1" /> Activate
-            </Button>
+            <>
+              <Button size="sm" variant="outline" onClick={() => actionMutation.mutate("activate")} disabled={actionMutation.isPending} data-testid={`button-activate-swarm-${swarm.id}`}>
+                <Play className="w-3 h-3 mr-1" /> Activate
+              </Button>
+              {swarm.steps && swarm.steps.length > 0 && (
+                <Button size="sm" variant="outline" onClick={() => runMutation.mutate()} disabled={runMutation.isPending} data-testid={`button-run-swarm-${swarm.id}`}>
+                  <Play className="w-3 h-3 mr-1" /> Run Steps
+                </Button>
+              )}
+            </>
           )}
           {swarm.status === "active" && (
             <Button size="sm" variant="outline" onClick={() => actionMutation.mutate("pause")} disabled={actionMutation.isPending} data-testid={`button-pause-swarm-${swarm.id}`}>
@@ -211,7 +343,7 @@ export default function Swarms() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl font-semibold tracking-tight" data-testid="text-swarms-title">Swarms</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Coordinate groups of agents toward specific goals</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Coordinate agents with embedded workflow steps</p>
         </div>
         <CreateSwarmDialog />
       </div>
@@ -228,7 +360,7 @@ export default function Swarms() {
             <Network className="w-12 h-12 text-muted-foreground/30 mb-4" />
             <h3 className="text-sm font-medium mb-1">No swarms yet</h3>
             <p className="text-[11px] text-muted-foreground text-center max-w-xs">
-              Swarms coordinate multiple agents around a single goal. Each swarm gets a SwarmQueen for autonomous QA management.
+              A swarm is a coordinated group of agents working toward a goal. Each swarm has a SwarmQueen for autonomous QA and can include prompt or code workflow steps.
             </p>
           </CardContent>
         </Card>

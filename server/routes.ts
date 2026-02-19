@@ -2,9 +2,9 @@ import type { Express } from "express";
 import { type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, runWorkflow } from "./engine";
+import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps } from "./engine";
 import { testConnection } from "./openrouter";
-import { insertAgentSchema, insertSwarmSchema, insertWorkflowSchema } from "@shared/schema";
+import { insertAgentSchema, insertSwarmSchema } from "@shared/schema";
 import { log } from "./index";
 
 export async function registerRoutes(
@@ -107,6 +107,7 @@ export async function registerRoutes(
         name: data.name,
         goal: data.goal,
         objective: data.objective,
+        steps: data.steps,
       });
       res.status(201).json(swarm);
     } catch (error: any) {
@@ -124,6 +125,17 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/swarms/:id/run", async (req, res) => {
+    try {
+      runSwarmSteps(req.params.id).catch((err) => {
+        log(`Swarm step execution error: ${err.message}`, "engine");
+      });
+      res.json({ message: "Swarm execution started" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.delete("/api/swarms/:id", async (req, res) => {
     const swarm = await storage.getSwarm(req.params.id);
     if (!swarm) return res.status(404).json({ message: "Swarm not found" });
@@ -135,41 +147,26 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  app.get("/api/workflows", async (_req, res) => {
-    const workflows = await storage.getWorkflows();
-    res.json(workflows);
+  app.get("/api/chat", async (_req, res) => {
+    const messages = await storage.getChatHistory();
+    res.json(messages);
   });
 
-  app.get("/api/workflows/:id", async (req, res) => {
-    const workflow = await storage.getWorkflow(req.params.id);
-    if (!workflow) return res.status(404).json({ message: "Workflow not found" });
-    res.json(workflow);
-  });
-
-  app.post("/api/workflows", async (req, res) => {
+  app.post("/api/chat", async (req, res) => {
     try {
-      const data = insertWorkflowSchema.parse(req.body);
-      const workflow = await storage.createWorkflow(data);
-      res.status(201).json(workflow);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.post("/api/workflows/:id/run", async (req, res) => {
-    try {
-      runWorkflow(req.params.id).catch((err) => {
-        log(`Workflow error: ${err.message}`, "engine");
-      });
-      res.json({ message: "Workflow started" });
+      const { message } = req.body;
+      if (!message || typeof message !== "string") {
+        return res.status(400).json({ message: "Message required" });
+      }
+      const result = await chatWithNami(message);
+      res.json(result);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
   });
 
-  app.delete("/api/workflows/:id", async (req, res) => {
-    const deleted = await storage.deleteWorkflow(req.params.id);
-    if (!deleted) return res.status(404).json({ message: "Workflow not found" });
+  app.delete("/api/chat", async (_req, res) => {
+    await storage.clearChatHistory();
     res.json({ success: true });
   });
 

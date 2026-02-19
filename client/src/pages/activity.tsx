@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Activity as ActivityIcon, Bot, Network, GitBranch, AlertTriangle, MessageSquare, Zap, Settings2 } from "lucide-react";
+import { Activity as ActivityIcon, Bot, Network, ListChecks, AlertTriangle, MessageSquare, Zap, Settings2 } from "lucide-react";
 import type { NamiEvent } from "@shared/schema";
 
 const eventIcons: Record<string, React.ElementType> = {
@@ -11,7 +11,7 @@ const eventIcons: Record<string, React.ElementType> = {
   agent_status_changed: Zap,
   swarm_created: Network,
   swarm_completed: Network,
-  workflow_step_completed: GitBranch,
+  step_completed: ListChecks,
   message_sent: MessageSquare,
   error: AlertTriangle,
   system: Settings2,
@@ -22,7 +22,7 @@ const eventColors: Record<string, string> = {
   agent_status_changed: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
   swarm_created: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   swarm_completed: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-  workflow_step_completed: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+  step_completed: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
   message_sent: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   error: "bg-red-500/10 text-red-600 dark:text-red-400",
   system: "bg-muted text-muted-foreground",
@@ -39,8 +39,8 @@ function formatEventDescription(event: NamiEvent): string {
       return `Swarm "${p.name || "unknown"}" created with goal: ${p.goal || "unspecified"}`;
     case "swarm_completed":
       return `Swarm "${p.name || "unknown"}" completed successfully`;
-    case "workflow_step_completed":
-      return `Workflow step "${p.stepName || "unknown"}" completed`;
+    case "step_completed":
+      return `Step "${p.stepName || "unknown"}" completed in swarm`;
     case "message_sent":
       return `Message from ${p.from || "agent"}: ${(p.content || "").substring(0, 80)}${(p.content || "").length > 80 ? "..." : ""}`;
     case "error":

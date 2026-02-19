@@ -1,7 +1,7 @@
 import { storage } from "./storage";
-import { chatCompletion, type ChatMessage } from "./openrouter";
+import { chatCompletion, type ChatMessage as OpenRouterMessage } from "./openrouter";
 import { log } from "./index";
-import type { Agent, Swarm, Workflow, NamiEvent } from "@shared/schema";
+import type { Agent, Swarm, NamiEvent } from "@shared/schema";
 
 type EventCallback = (event: NamiEvent) => void;
 
@@ -65,12 +65,14 @@ export async function createSwarmWithQueen(data: {
   name: string;
   goal: string;
   objective: string;
+  steps?: Array<{ name: string; type: "prompt" | "code"; instruction: string; agentId?: string | null }>;
 }): Promise<{ swarm: Swarm; queen: Agent }> {
   const swarm = await storage.createSwarm({
     name: data.name,
     goal: data.goal,
     objective: data.objective,
     status: "pending",
+    steps: data.steps,
   });
 
   const queen = await createSwarmQueen(swarm.id, data.goal);
@@ -177,7 +179,7 @@ export async function runAgentInference(agentId: string, userMessage: string): P
   });
 
   const history = await storage.getMessages(agentId);
-  const messages: ChatMessage[] = [
+  const messages: OpenRouterMessage[] = [
     { role: "system", content: agent.systemPrompt },
     ...history.map((m) => ({ role: m.role, content: m.content })),
   ];
@@ -203,33 +205,81 @@ export async function runAgentInference(agentId: string, userMessage: string): P
   return content;
 }
 
-export async function runWorkflow(workflowId: string): Promise<Workflow> {
-  const workflow = await storage.getWorkflow(workflowId);
-  if (!workflow) throw new Error("Workflow not found");
+const NAMI_SYSTEM_PROMPT = `You are Nami, the primary orchestrator of the AgentNami multi-agent system. You manage spawns (child agents), swarms (coordinated agent groups with workflows), and SwarmQueens (autonomous QA managers).
 
-  await storage.updateWorkflow(workflowId, { status: "active" });
+Your capabilities:
+- Create and manage spawn agents for specific tasks
+- Organize swarms with embedded workflow steps (prompt-based or executable code)
+- Each swarm has a SwarmQueen that autonomously manages QA - you cannot override her primary objective
+- Route tasks to the right agents and coordinate multi-step workflows
 
-  for (let i = 0; i < workflow.steps.length; i++) {
-    const step = workflow.steps[i];
-    const updatedSteps = [...workflow.steps];
+You communicate clearly and concisely. When users describe tasks, help them understand how you'll orchestrate agents and swarms to accomplish their goals. You think in terms of decomposing work into agent hierarchies.`;
+
+export async function chatWithNami(userMessage: string): Promise<{ content: string; tokensUsed: number }> {
+  await storage.addChatMessage({
+    role: "user",
+    content: userMessage,
+    agentId: null,
+    agentName: null,
+    tokensUsed: 0,
+  });
+
+  const history = await storage.getChatHistory();
+  const messages: OpenRouterMessage[] = [
+    { role: "system", content: NAMI_SYSTEM_PROMPT },
+    ...history.slice(-20).map((m) => ({ role: m.role, content: m.content })),
+  ];
+
+  const config = await storage.getConfig();
+  const { content, tokensUsed } = await chatCompletion(messages, { model: config.defaultModel });
+
+  await storage.addChatMessage({
+    role: "assistant",
+    content,
+    agentId: "nami",
+    agentName: "Nami",
+    tokensUsed,
+  });
+
+  await eventBus.emit("message_sent", { agentName: "Nami", content: content.substring(0, 200), tokensUsed }, "nami");
+  log(`Nami chat: ${tokensUsed} tokens`, "engine");
+
+  return { content, tokensUsed };
+}
+
+export async function runSwarmSteps(swarmId: string): Promise<Swarm> {
+  const swarm = await storage.getSwarm(swarmId);
+  if (!swarm) throw new Error("Swarm not found");
+
+  await storage.updateSwarm(swarmId, { status: "active" });
+
+  for (let i = 0; i < swarm.steps.length; i++) {
+    const step = swarm.steps[i];
+    const updatedSteps = [...swarm.steps];
     updatedSteps[i] = { ...step, status: "running" };
-    await storage.updateWorkflow(workflowId, { steps: updatedSteps });
+    const totalSteps = swarm.steps.length;
+    await storage.updateSwarm(swarmId, { steps: updatedSteps, progress: Math.round((i / totalSteps) * 100) });
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      if (step.type === "prompt" && step.agentId) {
+        const result = await runAgentInference(step.agentId, step.instruction);
+        updatedSteps[i] = { ...step, status: "completed", output: { result } };
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        updatedSteps[i] = { ...step, status: "completed", output: { result: `Step "${step.name}" completed` } };
+      }
 
-      updatedSteps[i] = { ...step, status: "completed", output: { result: `Step "${step.name}" completed successfully` } };
-      await storage.updateWorkflow(workflowId, { steps: updatedSteps });
-
-      await eventBus.emit("workflow_step_completed", { workflowId, stepId: step.id, stepName: step.name, order: i }, "workflow-engine");
-      log(`Workflow step completed: ${step.name}`, "engine");
+      await storage.updateSwarm(swarmId, { steps: updatedSteps, progress: Math.round(((i + 1) / totalSteps) * 100) });
+      await eventBus.emit("step_completed", { swarmId, stepId: step.id, stepName: step.name, order: i }, "swarm-engine");
+      log(`Swarm step completed: ${step.name}`, "engine");
     } catch (error: any) {
       updatedSteps[i] = { ...step, status: "failed", output: { error: error.message } };
-      await storage.updateWorkflow(workflowId, { steps: updatedSteps, status: "failed" });
+      await storage.updateSwarm(swarmId, { steps: updatedSteps, status: "failed" });
       throw error;
     }
   }
 
-  const completed = await storage.updateWorkflow(workflowId, { status: "completed", completedAt: new Date().toISOString() });
+  const completed = await storage.updateSwarm(swarmId, { status: "completed", progress: 100, completedAt: new Date().toISOString() });
+  await eventBus.emit("swarm_completed", { swarmId, name: swarm.name }, "nami");
   return completed!;
 }

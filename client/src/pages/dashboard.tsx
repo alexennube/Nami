@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/status-badge";
-import { Bot, Network, GitBranch, Zap, Activity, TrendingUp } from "lucide-react";
+import { Bot, Network, Zap, Activity, TrendingUp, MessageSquare } from "lucide-react";
 import type { SystemStats, Agent, Swarm, NamiEvent } from "@shared/schema";
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from "recharts";
 
@@ -114,16 +114,16 @@ export default function Dashboard() {
           icon={Network}
         />
         <StatCard
-          title="Workflows"
-          value={stats?.totalWorkflows || 0}
-          subtitle="Total workflows"
-          icon={GitBranch}
-        />
-        <StatCard
           title="Tokens Used"
           value={stats?.totalTokensUsed?.toLocaleString() || "0"}
           subtitle={`${stats?.totalMessagesProcessed || 0} messages`}
           icon={Zap}
+        />
+        <StatCard
+          title="Messages"
+          value={stats?.totalMessagesProcessed || 0}
+          subtitle="Total processed"
+          icon={MessageSquare}
         />
       </div>
 

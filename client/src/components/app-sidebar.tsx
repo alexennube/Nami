@@ -14,9 +14,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import {
   LayoutDashboard,
+  MessageSquare,
   Bot,
   Network,
-  GitBranch,
   Settings,
   Activity,
   Zap,
@@ -26,9 +26,9 @@ import type { SystemStats } from "@shared/schema";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Chat", url: "/chat", icon: MessageSquare },
   { title: "Spawns", url: "/spawns", icon: Bot },
   { title: "Swarms", url: "/swarms", icon: Network },
-  { title: "Workflows", url: "/workflows", icon: GitBranch },
   { title: "Activity", url: "/activity", icon: Activity },
   { title: "Settings", url: "/settings", icon: Settings },
 ];
