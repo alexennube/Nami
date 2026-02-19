@@ -172,10 +172,16 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 <SidebarMenuItem>
-                  <SidebarMenuButton asChild data-active={location === "/" || location === "/chat"} className="data-[active=true]:bg-sidebar-accent">
+                  <SidebarMenuButton asChild data-active={location === "/" || location === "/chat"} className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
                     <Link href="/" data-testid="link-main-chat">
                       <span>Main Chat</span>
                     </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton className="text-sidebar-foreground/60" data-testid="button-new-chat">
+                    <Plus className="w-4 h-4" />
+                    <span>New Chat</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               </SidebarMenu>
@@ -189,7 +195,7 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   data-active={isMindPage}
-                  className="data-[active=true]:bg-sidebar-accent"
+                  className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground"
                   onClick={() => setMindOpen(!mindOpen)}
                   data-testid="button-toggle-mind"
                 >
@@ -201,7 +207,7 @@ export function AppSidebar() {
               {(mindOpen || isMindPage) && (
                 <>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/thoughts"} className="pl-8 data-[active=true]:bg-sidebar-accent">
+                    <SidebarMenuButton asChild data-active={location === "/thoughts"} className="pl-8 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
                       <Link href="/thoughts" data-testid="link-thoughts">
                         <Brain className="w-4 h-4" />
                         <span>Thoughts</span>
@@ -209,7 +215,7 @@ export function AppSidebar() {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/memory"} className="pl-8 data-[active=true]:bg-sidebar-accent">
+                    <SidebarMenuButton asChild data-active={location === "/memory"} className="pl-8 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
                       <Link href="/memory" data-testid="link-memory">
                         <BookOpen className="w-4 h-4" />
                         <span>Memory</span>
@@ -217,7 +223,7 @@ export function AppSidebar() {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton asChild data-active={location === "/heartbeat"} className="pl-8 data-[active=true]:bg-sidebar-accent">
+                    <SidebarMenuButton asChild data-active={location === "/heartbeat"} className="pl-8 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
                       <Link href="/heartbeat" data-testid="link-heartbeat">
                         <Heart className="w-4 h-4" />
                         <span>Heartbeat</span>
@@ -227,7 +233,7 @@ export function AppSidebar() {
                 </>
               )}
               <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/spawns"} className="data-[active=true]:bg-sidebar-accent">
+                <SidebarMenuButton asChild data-active={location === "/spawns"} className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
                   <Link href="/spawns" data-testid="link-spawn">
                     <Bot className="w-4 h-4" />
                     <span>Spawn</span>
@@ -235,7 +241,7 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/swarms"} className="data-[active=true]:bg-sidebar-accent">
+                <SidebarMenuButton asChild data-active={location === "/swarms"} className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
                   <Link href="/swarms" data-testid="link-swarm">
                     <Network className="w-4 h-4" />
                     <span>Swarm</span>
@@ -243,7 +249,7 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/tools"} className="data-[active=true]:bg-sidebar-accent">
+                <SidebarMenuButton asChild data-active={location === "/tools"} className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
                   <Link href="/tools" data-testid="link-tools">
                     <Wrench className="w-4 h-4" />
                     <span>Tools</span>
@@ -251,7 +257,7 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild data-active={location === "/settings"} className="data-[active=true]:bg-sidebar-accent">
+                <SidebarMenuButton asChild data-active={location === "/settings"} className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
                   <Link href="/settings" data-testid="link-settings">
                     <Settings className="w-4 h-4" />
                     <span>Settings</span>
