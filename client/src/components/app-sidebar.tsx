@@ -29,6 +29,7 @@ import {
   Play,
   ChevronDown,
   ChevronRight,
+  Cpu,
 } from "lucide-react";
 import { useState } from "react";
 import type { EngineStatus } from "@shared/schema";
@@ -36,7 +37,8 @@ import type { EngineStatus } from "@shared/schema";
 export function AppSidebar() {
   const [location] = useLocation();
   const [chatsOpen, setChatsOpen] = useState(true);
-  const [mindOpen, setMindOpen] = useState(true);
+  const [mindOpen, setMindOpen] = useState(false);
+  const isMindPage = location === "/thoughts" || location === "/memory" || location === "/heartbeat";
 
   const { data: engineStatus } = useQuery<EngineStatus>({
     queryKey: ["/api/engine/status"],
@@ -80,7 +82,7 @@ export function AppSidebar() {
         <Link href="/">
           <div className="flex items-center gap-3 cursor-pointer" data-testid="link-home">
             <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary/20 border border-primary/30">
-              <Bot className="w-5 h-5 text-primary" />
+              <Cpu className="w-5 h-5 text-primary" />
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-bold tracking-tight">nami</span>
@@ -182,50 +184,48 @@ export function AppSidebar() {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel
-            className="cursor-pointer select-none flex items-center gap-1"
-            onClick={() => setMindOpen(!mindOpen)}
-            data-testid="button-toggle-mind"
-          >
-            <Brain className="w-3 h-3" />
-            <span>Engine Mind</span>
-            {mindOpen ? <ChevronDown className="w-3 h-3 ml-auto" /> : <ChevronRight className="w-3 h-3 ml-auto" />}
-          </SidebarGroupLabel>
-          {mindOpen && (
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild data-active={location === "/thoughts"} className="data-[active=true]:bg-sidebar-accent">
-                    <Link href="/thoughts" data-testid="link-thoughts">
-                      <Brain className="w-4 h-4" />
-                      <span>Thoughts</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild data-active={location === "/memory"} className="data-[active=true]:bg-sidebar-accent">
-                    <Link href="/memory" data-testid="link-memory">
-                      <BookOpen className="w-4 h-4" />
-                      <span>Memory</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild data-active={location === "/heartbeat"} className="data-[active=true]:bg-sidebar-accent">
-                    <Link href="/heartbeat" data-testid="link-heartbeat">
-                      <Heart className="w-4 h-4" />
-                      <span>Heartbeat</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          )}
-        </SidebarGroup>
-
-        <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  data-active={isMindPage}
+                  className="data-[active=true]:bg-sidebar-accent"
+                  onClick={() => setMindOpen(!mindOpen)}
+                  data-testid="button-toggle-mind"
+                >
+                  <Brain className="w-4 h-4" />
+                  <span>Engine Mind</span>
+                  {mindOpen ? <ChevronDown className="w-3 h-3 ml-auto" /> : <ChevronRight className="w-3 h-3 ml-auto" />}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {(mindOpen || isMindPage) && (
+                <>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/thoughts"} className="pl-8 data-[active=true]:bg-sidebar-accent">
+                      <Link href="/thoughts" data-testid="link-thoughts">
+                        <Brain className="w-4 h-4" />
+                        <span>Thoughts</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/memory"} className="pl-8 data-[active=true]:bg-sidebar-accent">
+                      <Link href="/memory" data-testid="link-memory">
+                        <BookOpen className="w-4 h-4" />
+                        <span>Memory</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/heartbeat"} className="pl-8 data-[active=true]:bg-sidebar-accent">
+                      <Link href="/heartbeat" data-testid="link-heartbeat">
+                        <Heart className="w-4 h-4" />
+                        <span>Heartbeat</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </>
+              )}
               <SidebarMenuItem>
                 <SidebarMenuButton asChild data-active={location === "/spawns"} className="data-[active=true]:bg-sidebar-accent">
                   <Link href="/spawns" data-testid="link-spawn">
