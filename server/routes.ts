@@ -299,6 +299,30 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/models", async (_req, res) => {
+    try {
+      const config = await storage.getConfig();
+      const apiKey = config.openRouterApiKey || process.env.OPENROUTER_API_KEY;
+      const response = await fetch("https://openrouter.ai/api/v1/models", {
+        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
+      });
+      if (!response.ok) {
+        throw new Error(`OpenRouter API returned ${response.status}`);
+      }
+      const data = await response.json() as { data: any[] };
+      const models = (data.data || []).map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        context_length: m.context_length,
+        pricing: m.pricing,
+      }));
+      models.sort((a: any, b: any) => (a.name || a.id).localeCompare(b.name || b.id));
+      res.json(models);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/messages", async (req, res) => {
     const { agentId, swarmId } = req.query;
     const messages = await storage.getMessages(agentId as string, swarmId as string);

@@ -1,33 +1,34 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Settings2, Key, Cpu, Globe, Shield, Save, ExternalLink, CheckCircle2 } from "lucide-react";
+import { Settings2, Key, Cpu, Globe, Save, ExternalLink, Search, Check, Loader2 } from "lucide-react";
 import type { NamiConfig } from "@shared/schema";
 
-const MODELS = [
-  { value: "openai/gpt-4o", label: "GPT-4o", provider: "OpenAI" },
-  { value: "openai/gpt-4o-mini", label: "GPT-4o Mini", provider: "OpenAI" },
-  { value: "openai/gpt-4-turbo", label: "GPT-4 Turbo", provider: "OpenAI" },
-  { value: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet", provider: "Anthropic" },
-  { value: "anthropic/claude-3-haiku", label: "Claude 3 Haiku", provider: "Anthropic" },
-  { value: "google/gemini-pro-1.5", label: "Gemini Pro 1.5", provider: "Google" },
-  { value: "meta-llama/llama-3.1-70b-instruct", label: "Llama 3.1 70B", provider: "Meta" },
-  { value: "mistralai/mixtral-8x7b-instruct", label: "Mixtral 8x7B", provider: "Mistral" },
-  { value: "deepseek/deepseek-chat", label: "DeepSeek Chat", provider: "DeepSeek" },
-];
+interface OpenRouterModel {
+  id: string;
+  name: string;
+  context_length: number;
+  pricing: {
+    prompt: string;
+    completion: string;
+  };
+}
 
 export default function Settings() {
   const { data: config, isLoading } = useQuery<NamiConfig>({ queryKey: ["/api/config"] });
+  const { data: models, isLoading: modelsLoading } = useQuery<OpenRouterModel[]>({
+    queryKey: ["/api/models"],
+    staleTime: 5 * 60 * 1000,
+  });
   const { toast } = useToast();
 
   const [apiKey, setApiKey] = useState("");
@@ -37,6 +38,8 @@ export default function Settings() {
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(10);
   const [maxTokens, setMaxTokens] = useState(4096);
   const [temperature, setTemperature] = useState(0.7);
+  const [modelSearch, setModelSearch] = useState("");
+  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (config) {
@@ -49,6 +52,21 @@ export default function Settings() {
       setTemperature(config.temperature);
     }
   }, [config]);
+
+  const filteredModels = useMemo(() => {
+    if (!models) return [];
+    if (!modelSearch.trim()) return models;
+    const q = modelSearch.toLowerCase();
+    return models.filter(
+      (m) => m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q))
+    );
+  }, [models, modelSearch]);
+
+  const selectedModelName = useMemo(() => {
+    if (!models) return defaultModel;
+    const found = models.find((m) => m.id === defaultModel);
+    return found ? found.name || found.id : defaultModel;
+  }, [models, defaultModel]);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -147,27 +165,81 @@ export default function Settings() {
             <CardTitle className="text-sm">Model Configuration</CardTitle>
           </div>
           <CardDescription className="text-[11px]">
-            Default model and inference parameters for new agents.
+            Default model and inference parameters for new agents. {models ? `${models.length} models available.` : ""}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label className="text-xs">Default Model</Label>
-            <Select value={defaultModel} onValueChange={setDefaultModel}>
-              <SelectTrigger data-testid="select-default-model">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MODELS.map((m) => (
-                  <SelectItem key={m.value} value={m.value}>
-                    <span className="flex items-center gap-2">
-                      {m.label}
-                      <span className="text-[10px] text-muted-foreground">{m.provider}</span>
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="relative">
+              <Button
+                variant="outline"
+                className="w-full justify-between font-mono text-xs"
+                onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
+                data-testid="select-default-model"
+              >
+                <span className="truncate">{selectedModelName}</span>
+                <Search className="w-3 h-3 ml-2 shrink-0 text-muted-foreground" />
+              </Button>
+
+              {modelDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 z-50 mt-1 border rounded-md bg-popover shadow-md">
+                  <div className="p-2 border-b">
+                    <div className="flex items-center gap-2 px-2">
+                      <Search className="w-3 h-3 text-muted-foreground shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="Search models..."
+                        value={modelSearch}
+                        onChange={(e) => setModelSearch(e.target.value)}
+                        className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                        autoFocus
+                        data-testid="input-model-search"
+                      />
+                    </div>
+                  </div>
+                  <ScrollArea className="h-[300px]">
+                    <div className="p-1">
+                      {modelsLoading ? (
+                        <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading models...
+                        </div>
+                      ) : filteredModels.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-muted-foreground">
+                          No models found
+                        </div>
+                      ) : (
+                        filteredModels.map((m) => (
+                          <button
+                            key={m.id}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left text-xs hover-elevate cursor-pointer"
+                            onClick={() => {
+                              setDefaultModel(m.id);
+                              setModelDropdownOpen(false);
+                              setModelSearch("");
+                            }}
+                            data-testid={`option-model-${m.id}`}
+                          >
+                            <Check className={`w-3 h-3 shrink-0 ${defaultModel === m.id ? "text-primary" : "invisible"}`} />
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="font-medium truncate">{m.name || m.id}</span>
+                              <span className="text-[10px] text-muted-foreground font-mono truncate">{m.id}</span>
+                            </div>
+                            {m.context_length && (
+                              <Badge variant="secondary" className="text-[9px] shrink-0 no-default-active-elevate">
+                                {(m.context_length / 1000).toFixed(0)}k ctx
+                              </Badge>
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+            </div>
+            <span className="text-[10px] text-muted-foreground font-mono">{defaultModel}</span>
           </div>
 
           <div className="flex flex-col gap-2">
