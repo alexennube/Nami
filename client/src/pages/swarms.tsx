@@ -1,0 +1,244 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
+import { StatusBadge } from "@/components/status-badge";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { Network, Plus, Crown, Bot, Play, Pause, Square, Trash2, Target, Eye } from "lucide-react";
+import type { Swarm, Agent } from "@shared/schema";
+
+function CreateSwarmDialog() {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [goal, setGoal] = useState("");
+  const [objective, setObjective] = useState("");
+  const { toast } = useToast();
+
+  const createMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/swarms", { name, goal, objective, status: "pending" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/swarms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
+      setOpen(false);
+      setName("");
+      setGoal("");
+      setObjective("");
+      toast({ title: "Swarm created", description: `${name} swarm with SwarmQueen is ready.` });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to create swarm", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button data-testid="button-create-swarm">
+          <Plus className="w-4 h-4 mr-2" />
+          Create Swarm
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Create New Swarm</DialogTitle>
+          <DialogDescription>A swarm coordinates multiple agents toward a single goal. A SwarmQueen will be automatically assigned to manage and QA the swarm.</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 py-2">
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="swarm-name">Swarm Name</Label>
+            <Input id="swarm-name" placeholder="e.g. Data Extraction Pipeline" value={name} onChange={(e) => setName(e.target.value)} data-testid="input-swarm-name" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="swarm-goal">Goal</Label>
+            <Input id="swarm-goal" placeholder="e.g. Extract 10 years of financial data" value={goal} onChange={(e) => setGoal(e.target.value)} data-testid="input-swarm-goal" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="swarm-objective">Objective</Label>
+            <Textarea
+              id="swarm-objective"
+              placeholder="Describe the specific outcome the swarm should achieve..."
+              value={objective}
+              onChange={(e) => setObjective(e.target.value)}
+              className="resize-none min-h-[100px]"
+              data-testid="input-swarm-objective"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={() => createMutation.mutate()} disabled={!name || !goal || createMutation.isPending} data-testid="button-submit-swarm">
+            {createMutation.isPending ? "Creating..." : "Create Swarm"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SwarmCard({ swarm }: { swarm: Swarm }) {
+  const { toast } = useToast();
+  const { data: agents } = useQuery<Agent[]>({ queryKey: ["/api/agents"] });
+  const swarmAgents = agents?.filter((a) => a.swarmId === swarm.id) || [];
+  const queen = agents?.find((a) => a.id === swarm.queenId);
+
+  const actionMutation = useMutation({
+    mutationFn: async (action: string) => {
+      const res = await apiRequest("POST", `/api/swarms/${swarm.id}/action`, { action });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/swarms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Action failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/swarms/${swarm.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/swarms"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      toast({ title: "Swarm disbanded" });
+    },
+  });
+
+  return (
+    <Card data-testid={`card-swarm-${swarm.id}`}>
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center justify-center w-9 h-9 rounded-md bg-amber-500/10 shrink-0">
+              <Network className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-sm font-medium truncate">{swarm.name}</span>
+              <span className="text-[11px] text-muted-foreground truncate">{swarm.agentIds.length} agents</span>
+            </div>
+          </div>
+          <StatusBadge status={swarm.status} />
+        </div>
+
+        <div className="mt-3 p-2 rounded-md bg-muted/30">
+          <div className="flex items-center gap-1.5 mb-1">
+            <Target className="w-3 h-3 text-muted-foreground" />
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Goal</span>
+          </div>
+          <p className="text-xs">{swarm.goal}</p>
+        </div>
+
+        {queen && (
+          <div className="flex items-center gap-2 mt-3 p-2 rounded-md bg-purple-500/5 border border-purple-500/10">
+            <Crown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+            <div className="flex flex-col gap-0 min-w-0">
+              <span className="text-[11px] font-medium truncate">{queen.name}</span>
+              <span className="text-[10px] text-muted-foreground">SwarmQueen</span>
+            </div>
+            <StatusBadge status={queen.status} />
+          </div>
+        )}
+
+        <div className="mt-3">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="text-[10px] text-muted-foreground">Progress</span>
+            <span className="text-[10px] font-mono text-muted-foreground">{swarm.progress}%</span>
+          </div>
+          <Progress value={swarm.progress} className="h-1.5" />
+        </div>
+
+        {swarmAgents.length > 0 && (
+          <div className="mt-3">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Agents</span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {swarmAgents.filter(a => a.role !== "swarm_queen").map((a) => (
+                <Badge key={a.id} variant="outline" className="text-[10px]">
+                  <Bot className="w-2.5 h-2.5 mr-1" />
+                  {a.name}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-1 mt-3 flex-wrap">
+          {swarm.status === "pending" && (
+            <Button size="sm" variant="outline" onClick={() => actionMutation.mutate("activate")} disabled={actionMutation.isPending} data-testid={`button-activate-swarm-${swarm.id}`}>
+              <Play className="w-3 h-3 mr-1" /> Activate
+            </Button>
+          )}
+          {swarm.status === "active" && (
+            <Button size="sm" variant="outline" onClick={() => actionMutation.mutate("pause")} disabled={actionMutation.isPending} data-testid={`button-pause-swarm-${swarm.id}`}>
+              <Pause className="w-3 h-3 mr-1" /> Pause
+            </Button>
+          )}
+          {swarm.status === "paused" && (
+            <Button size="sm" variant="outline" onClick={() => actionMutation.mutate("resume")} disabled={actionMutation.isPending} data-testid={`button-resume-swarm-${swarm.id}`}>
+              <Play className="w-3 h-3 mr-1" /> Resume
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="ml-auto text-destructive" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending} data-testid={`button-delete-swarm-${swarm.id}`}>
+            <Trash2 className="w-3 h-3" />
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function Swarms() {
+  const { data: swarms, isLoading } = useQuery<Swarm[]>({ queryKey: ["/api/swarms"] });
+
+  return (
+    <div className="flex flex-col gap-6 p-6 max-w-[1400px]">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight" data-testid="text-swarms-title">Swarms</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Coordinate groups of agents toward specific goals</p>
+        </div>
+        <CreateSwarmDialog />
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i}><CardContent className="p-4"><Skeleton className="h-48 w-full" /></CardContent></Card>
+          ))}
+        </div>
+      ) : !swarms || swarms.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Network className="w-12 h-12 text-muted-foreground/30 mb-4" />
+            <h3 className="text-sm font-medium mb-1">No swarms yet</h3>
+            <p className="text-[11px] text-muted-foreground text-center max-w-xs">
+              Swarms coordinate multiple agents around a single goal. Each swarm gets a SwarmQueen for autonomous QA management.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {swarms.map((swarm) => (
+            <SwarmCard key={swarm.id} swarm={swarm} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
