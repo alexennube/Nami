@@ -58,13 +58,13 @@ export class MemStorage implements IStorage {
   private memories: Map<string, Memory> = new Map();
   private heartbeatLogs: HeartbeatLog[] = [];
   private heartbeatConfig: HeartbeatConfig = {
-    enabled: false,
+    enabled: true,
     intervalSeconds: 30,
     instruction: "Check on the status of all agents and swarms. If idle, report a sleep state. If active, provide a brief progress update.",
     maxBeats: 0,
     totalBeats: 0,
   };
-  private engineState: EngineState = "stopped";
+  private engineState: EngineState = "running";
   private config: NamiConfig = {
     openRouterApiKey: process.env.OPENROUTER_API_KEY || "",
     defaultModel: "openai/gpt-4o",

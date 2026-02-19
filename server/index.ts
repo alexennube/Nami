@@ -96,8 +96,15 @@ app.use((req, res, next) => {
       host: "0.0.0.0",
       reusePort: true,
     },
-    () => {
+    async () => {
       log(`serving on port ${port}`);
+
+      try {
+        const { bootEngine } = await import("./engine");
+        await bootEngine();
+      } catch (err: any) {
+        log(`Engine auto-boot failed (non-fatal): ${err.message}`, "engine");
+      }
     },
   );
 })();

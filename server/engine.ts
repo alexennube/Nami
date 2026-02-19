@@ -22,10 +22,36 @@ class EventBus {
 
 export const eventBus = new EventBus();
 
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+let consecutiveErrors = 0;
+const MAX_BACKOFF_MS = 5 * 60 * 1000;
+
+export async function bootEngine(): Promise<void> {
+  const engineState = await storage.getEngineState();
+  log(`Engine boot: state=${engineState}`, "engine");
+
+  if (engineState === "running") {
+    await eventBus.emit("system", { message: "Engine auto-booted (always-on)" }, "nami");
+    await storage.addThought({
+      content: "Engine auto-booted. Autonomous mode active. Heartbeat will begin ticking.",
+      source: "nami",
+      type: "observation",
+    });
+
+    const hbConfig = await storage.getHeartbeatConfig();
+    if (hbConfig.enabled) {
+      startHeartbeat();
+    }
+
+    log("Engine auto-booted: RUNNING with heartbeat", "engine");
+  } else {
+    log(`Engine boot skipped: state is ${engineState}`, "engine");
+  }
+}
 
 export async function startEngine(): Promise<EngineState> {
   const state = await storage.setEngineState("running");
+  consecutiveErrors = 0;
   await eventBus.emit("system", { message: "Engine started" }, "nami");
   log("Engine started", "engine");
 
@@ -59,43 +85,58 @@ export async function stopEngine(): Promise<EngineState> {
   return state;
 }
 
+async function scheduleNextBeat() {
+  const engineState = await storage.getEngineState();
+  if (engineState !== "running") return;
+
+  const hbConfig = await storage.getHeartbeatConfig();
+  if (!hbConfig.enabled) return;
+
+  if (hbConfig.maxBeats > 0 && hbConfig.totalBeats >= hbConfig.maxBeats) {
+    await storage.updateHeartbeatConfig({ enabled: false });
+    log("Heartbeat max beats reached, auto-disabled", "engine");
+    return;
+  }
+
+  const baseInterval = (hbConfig.intervalSeconds || 30) * 1000;
+  const backoff = consecutiveErrors > 0
+    ? Math.min(baseInterval * Math.pow(2, consecutiveErrors), MAX_BACKOFF_MS)
+    : baseInterval;
+
+  if (consecutiveErrors > 0) {
+    log(`Heartbeat backoff: ${Math.round(backoff / 1000)}s (${consecutiveErrors} consecutive errors)`, "engine");
+  }
+
+  heartbeatTimer = setTimeout(async () => {
+    try {
+      const currentState = await storage.getEngineState();
+      if (currentState !== "running") return;
+
+      const currentConfig = await storage.getHeartbeatConfig();
+      if (!currentConfig.enabled) return;
+
+      await executeHeartbeat(currentConfig.instruction);
+      await storage.updateHeartbeatConfig({ totalBeats: currentConfig.totalBeats + 1 });
+      consecutiveErrors = 0;
+    } catch (err: any) {
+      consecutiveErrors++;
+      log(`Heartbeat error (attempt ${consecutiveErrors}): ${err.message}`, "engine");
+    }
+
+    scheduleNextBeat();
+  }, backoff);
+}
+
 export function startHeartbeat() {
   stopHeartbeat();
-  storage.getHeartbeatConfig().then((config) => {
-    if (!config.enabled) return;
-    const intervalMs = (config.intervalSeconds || 30) * 1000;
-    log(`Heartbeat started: every ${config.intervalSeconds}s`, "engine");
-
-    heartbeatTimer = setInterval(async () => {
-      try {
-        const engineState = await storage.getEngineState();
-        if (engineState !== "running") return;
-
-        const hbConfig = await storage.getHeartbeatConfig();
-        if (!hbConfig.enabled) {
-          stopHeartbeat();
-          return;
-        }
-
-        if (hbConfig.maxBeats > 0 && hbConfig.totalBeats >= hbConfig.maxBeats) {
-          stopHeartbeat();
-          await storage.updateHeartbeatConfig({ enabled: false });
-          log("Heartbeat max beats reached, stopping", "engine");
-          return;
-        }
-
-        await executeHeartbeat(hbConfig.instruction);
-        await storage.updateHeartbeatConfig({ totalBeats: hbConfig.totalBeats + 1 });
-      } catch (err: any) {
-        log(`Heartbeat error: ${err.message}`, "engine");
-      }
-    }, intervalMs);
-  });
+  consecutiveErrors = 0;
+  log("Heartbeat started (autonomous loop)", "engine");
+  scheduleNextBeat();
 }
 
 export function stopHeartbeat() {
   if (heartbeatTimer) {
-    clearInterval(heartbeatTimer);
+    clearTimeout(heartbeatTimer);
     heartbeatTimer = null;
     log("Heartbeat stopped", "engine");
   }

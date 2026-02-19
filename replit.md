@@ -49,6 +49,11 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `GET/PUT /api/config` - System configuration (BYOK API key)
 
 ## Recent Changes
+- 2026-02-19: Engine auto-boots on server start (always-on autonomous mode). Heartbeat defaults to enabled.
+- 2026-02-19: Heartbeat uses setTimeout-based scheduling with exponential backoff on errors (never crashes)
+- 2026-02-19: Multi-attempt heartbeat efforts (up to 3 LLM cycles per beat) with summary generation
+- 2026-02-19: Collapsible heartbeat timeline panel on right side of chat view
+- 2026-02-19: HeartbeatLog storage and API endpoint for tracking beat history
 - 2026-02-19: Major UI overhaul to match OpenClaw-style interface with dark green theme
 - 2026-02-19: Added heartbeat system (autonomous agent loop), thoughts, memory, engine state
 - 2026-02-19: Chat is now the main view (removed Dashboard as default)
