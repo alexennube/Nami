@@ -6,23 +6,29 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { useNamiEvents } from "@/hooks/use-nami-events";
 import NotFound from "@/pages/not-found";
-import Dashboard from "@/pages/dashboard";
 import Chat from "@/pages/chat";
+import Thoughts from "@/pages/thoughts";
+import MemoryPage from "@/pages/memory";
+import Heartbeat from "@/pages/heartbeat";
 import Spawns from "@/pages/spawns";
 import Swarms from "@/pages/swarms";
+import Tools from "@/pages/tools";
 import Activity from "@/pages/activity";
 import Settings from "@/pages/settings";
 
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
+      <Route path="/" component={Chat} />
       <Route path="/chat" component={Chat} />
+      <Route path="/thoughts" component={Thoughts} />
+      <Route path="/memory" component={MemoryPage} />
+      <Route path="/heartbeat" component={Heartbeat} />
       <Route path="/spawns" component={Spawns} />
       <Route path="/swarms" component={Swarms} />
+      <Route path="/tools" component={Tools} />
       <Route path="/activity" component={Activity} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
@@ -34,7 +40,7 @@ function AppContent() {
   useNamiEvents();
 
   const style = {
-    "--sidebar-width": "15rem",
+    "--sidebar-width": "14rem",
     "--sidebar-width-icon": "3rem",
   };
 
@@ -43,11 +49,7 @@ function AppContent() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-2 p-2 border-b sticky top-0 bg-background z-50">
-            <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
-          </header>
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-hidden">
             <Router />
           </main>
         </div>

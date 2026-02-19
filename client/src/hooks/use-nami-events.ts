@@ -13,6 +13,7 @@ export function useNamiEvents() {
         case "agent_status_changed":
           queryClient.invalidateQueries({ queryKey: ["/api/agents"] });
           queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/engine/status"] });
           break;
         case "swarm_created":
         case "swarm_completed":
@@ -23,10 +24,21 @@ export function useNamiEvents() {
         case "message_sent":
           queryClient.invalidateQueries({ queryKey: ["/api/events"] });
           queryClient.invalidateQueries({ queryKey: ["/api/chat"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/thoughts"] });
+          break;
+        case "heartbeat":
+          queryClient.invalidateQueries({ queryKey: ["/api/chat"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/engine/status"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/heartbeat"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/thoughts"] });
+          break;
+        case "thought":
+          queryClient.invalidateQueries({ queryKey: ["/api/thoughts"] });
           break;
         default:
           queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
           queryClient.invalidateQueries({ queryKey: ["/api/events"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/engine/status"] });
       }
     });
 

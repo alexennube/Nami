@@ -1,4 +1,4 @@
-import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage } from "@shared/schema";
+import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, Thought, Memory, HeartbeatConfig, EngineState } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -28,6 +28,21 @@ export interface IStorage {
   getChatHistory(): Promise<ChatMessage[]>;
   addChatMessage(message: Omit<ChatMessage, "id" | "timestamp">): Promise<ChatMessage>;
   clearChatHistory(): Promise<void>;
+
+  getThoughts(): Promise<Thought[]>;
+  addThought(thought: Omit<Thought, "id" | "timestamp">): Promise<Thought>;
+  clearThoughts(): Promise<void>;
+
+  getMemories(): Promise<Memory[]>;
+  addMemory(memory: Omit<Memory, "id" | "createdAt" | "lastAccessedAt">): Promise<Memory>;
+  updateMemory(id: string, updates: Partial<Memory>): Promise<Memory | undefined>;
+  deleteMemory(id: string): Promise<boolean>;
+
+  getHeartbeatConfig(): Promise<HeartbeatConfig>;
+  updateHeartbeatConfig(updates: Partial<HeartbeatConfig>): Promise<HeartbeatConfig>;
+
+  getEngineState(): Promise<EngineState>;
+  setEngineState(state: EngineState): Promise<EngineState>;
 }
 
 export class MemStorage implements IStorage {
@@ -36,6 +51,16 @@ export class MemStorage implements IStorage {
   private events: NamiEvent[] = [];
   private messages: AgentMessage[] = [];
   private chatHistory: ChatMessage[] = [];
+  private thoughts: Thought[] = [];
+  private memories: Map<string, Memory> = new Map();
+  private heartbeatConfig: HeartbeatConfig = {
+    enabled: false,
+    intervalSeconds: 30,
+    instruction: "Check on the status of all agents and swarms. If idle, report a sleep state. If active, provide a brief progress update.",
+    maxBeats: 0,
+    totalBeats: 0,
+  };
+  private engineState: EngineState = "stopped";
   private config: NamiConfig = {
     openRouterApiKey: process.env.OPENROUTER_API_KEY || "",
     defaultModel: "openai/gpt-4o",
@@ -186,6 +211,63 @@ export class MemStorage implements IStorage {
 
   async clearChatHistory(): Promise<void> {
     this.chatHistory = [];
+  }
+
+  async getThoughts(): Promise<Thought[]> {
+    return [...this.thoughts].reverse().slice(0, 100);
+  }
+
+  async addThought(data: Omit<Thought, "id" | "timestamp">): Promise<Thought> {
+    const thought: Thought = { ...data, id: randomUUID(), timestamp: new Date().toISOString() };
+    this.thoughts.push(thought);
+    if (this.thoughts.length > 500) this.thoughts = this.thoughts.slice(-500);
+    return thought;
+  }
+
+  async clearThoughts(): Promise<void> {
+    this.thoughts = [];
+  }
+
+  async getMemories(): Promise<Memory[]> {
+    return Array.from(this.memories.values()).sort((a, b) => b.importance - a.importance);
+  }
+
+  async addMemory(data: Omit<Memory, "id" | "createdAt" | "lastAccessedAt">): Promise<Memory> {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const memory: Memory = { ...data, id, createdAt: now, lastAccessedAt: now };
+    this.memories.set(id, memory);
+    return memory;
+  }
+
+  async updateMemory(id: string, updates: Partial<Memory>): Promise<Memory | undefined> {
+    const memory = this.memories.get(id);
+    if (!memory) return undefined;
+    const updated = { ...memory, ...updates };
+    this.memories.set(id, updated);
+    return updated;
+  }
+
+  async deleteMemory(id: string): Promise<boolean> {
+    return this.memories.delete(id);
+  }
+
+  async getHeartbeatConfig(): Promise<HeartbeatConfig> {
+    return { ...this.heartbeatConfig };
+  }
+
+  async updateHeartbeatConfig(updates: Partial<HeartbeatConfig>): Promise<HeartbeatConfig> {
+    this.heartbeatConfig = { ...this.heartbeatConfig, ...updates };
+    return { ...this.heartbeatConfig };
+  }
+
+  async getEngineState(): Promise<EngineState> {
+    return this.engineState;
+  }
+
+  async setEngineState(state: EngineState): Promise<EngineState> {
+    this.engineState = state;
+    return this.engineState;
   }
 }
 

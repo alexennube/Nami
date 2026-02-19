@@ -15,6 +15,9 @@ export type StepStatus = z.infer<typeof StepStatus>;
 export const StepType = z.enum(["prompt", "code"]);
 export type StepType = z.infer<typeof StepType>;
 
+export const EngineState = z.enum(["running", "paused", "stopped"]);
+export type EngineState = z.infer<typeof EngineState>;
+
 export const agentSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -97,8 +100,46 @@ export const chatMessageSchema = z.object({
   agentName: z.string().nullable(),
   timestamp: z.string(),
   tokensUsed: z.number().default(0),
+  autonomous: z.boolean().default(false),
 });
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
+
+export const thoughtSchema = z.object({
+  id: z.string(),
+  content: z.string(),
+  source: z.string(),
+  timestamp: z.string(),
+  type: z.enum(["reasoning", "planning", "reflection", "observation"]),
+});
+export type Thought = z.infer<typeof thoughtSchema>;
+
+export const memorySchema = z.object({
+  id: z.string(),
+  content: z.string(),
+  category: z.string(),
+  importance: z.number().default(0),
+  createdAt: z.string(),
+  lastAccessedAt: z.string(),
+});
+export type Memory = z.infer<typeof memorySchema>;
+
+export const heartbeatConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  intervalSeconds: z.number().default(30),
+  instruction: z.string().default("Check on the status of all agents and swarms. If idle, report a sleep state. If active, provide a brief progress update."),
+  maxBeats: z.number().default(0),
+  totalBeats: z.number().default(0),
+});
+export type HeartbeatConfig = z.infer<typeof heartbeatConfigSchema>;
+
+export const engineStatusSchema = z.object({
+  state: EngineState,
+  heartbeatCount: z.number(),
+  idleCount: z.string(),
+  uptime: z.number(),
+  currentModel: z.string(),
+});
+export type EngineStatus = z.infer<typeof engineStatusSchema>;
 
 export const toolDefinitionSchema = z.object({
   name: z.string(),
@@ -132,7 +173,7 @@ export type SystemStats = z.infer<typeof systemStatsSchema>;
 
 export const eventSchema = z.object({
   id: z.string(),
-  type: z.enum(["agent_created", "agent_status_changed", "swarm_created", "swarm_completed", "step_completed", "message_sent", "error", "system"]),
+  type: z.enum(["agent_created", "agent_status_changed", "swarm_created", "swarm_completed", "step_completed", "message_sent", "heartbeat", "thought", "error", "system"]),
   payload: z.record(z.any()),
   timestamp: z.string(),
   source: z.string(),

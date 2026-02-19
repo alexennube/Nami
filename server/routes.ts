@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
-import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps } from "./engine";
+import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
 import { insertAgentSchema, insertSwarmSchema } from "@shared/schema";
 import { log } from "./index";
@@ -33,6 +33,49 @@ export async function registerRoutes(
   app.get("/api/stats", async (_req, res) => {
     const stats = await storage.getStats();
     res.json(stats);
+  });
+
+  app.get("/api/engine/status", async (_req, res) => {
+    const state = await storage.getEngineState();
+    const hbConfig = await storage.getHeartbeatConfig();
+    const config = await storage.getConfig();
+    const agents = await storage.getAgents();
+    const idleCount = agents.filter((a) => a.status === "idle").length;
+    const totalCount = agents.length;
+    res.json({
+      state,
+      heartbeatCount: hbConfig.totalBeats,
+      idleCount: `${idleCount}/${totalCount}`,
+      uptime: Date.now(),
+      currentModel: config.defaultModel,
+    });
+  });
+
+  app.post("/api/engine/start", async (_req, res) => {
+    try {
+      const state = await startEngine();
+      res.json({ state });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/engine/pause", async (_req, res) => {
+    try {
+      const state = await pauseEngine();
+      res.json({ state });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/engine/stop", async (_req, res) => {
+    try {
+      const state = await stopEngine();
+      res.json({ state });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   app.get("/api/agents", async (_req, res) => {
@@ -168,6 +211,58 @@ export async function registerRoutes(
   app.delete("/api/chat", async (_req, res) => {
     await storage.clearChatHistory();
     res.json({ success: true });
+  });
+
+  app.get("/api/thoughts", async (_req, res) => {
+    const thoughts = await storage.getThoughts();
+    res.json(thoughts);
+  });
+
+  app.delete("/api/thoughts", async (_req, res) => {
+    await storage.clearThoughts();
+    res.json({ success: true });
+  });
+
+  app.get("/api/memories", async (_req, res) => {
+    const memories = await storage.getMemories();
+    res.json(memories);
+  });
+
+  app.post("/api/memories", async (req, res) => {
+    try {
+      const { content, category, importance } = req.body;
+      if (!content || !category) return res.status(400).json({ message: "Content and category required" });
+      const memory = await storage.addMemory({ content, category, importance: importance || 0 });
+      res.status(201).json(memory);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/memories/:id", async (req, res) => {
+    const deleted = await storage.deleteMemory(req.params.id);
+    if (!deleted) return res.status(404).json({ message: "Memory not found" });
+    res.json({ success: true });
+  });
+
+  app.get("/api/heartbeat", async (_req, res) => {
+    const config = await storage.getHeartbeatConfig();
+    res.json(config);
+  });
+
+  app.put("/api/heartbeat", async (req, res) => {
+    try {
+      const config = await storage.updateHeartbeatConfig(req.body);
+      const engineState = await storage.getEngineState();
+      if (config.enabled && engineState === "running") {
+        startHeartbeat();
+      } else {
+        stopHeartbeat();
+      }
+      res.json(config);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
   });
 
   app.get("/api/events", async (_req, res) => {

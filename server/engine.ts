@@ -1,7 +1,7 @@
 import { storage } from "./storage";
 import { chatCompletion, type ChatMessage as OpenRouterMessage } from "./openrouter";
 import { log } from "./index";
-import type { Agent, Swarm, NamiEvent } from "@shared/schema";
+import type { Agent, Swarm, NamiEvent, EngineState } from "@shared/schema";
 
 type EventCallback = (event: NamiEvent) => void;
 
@@ -22,6 +22,160 @@ class EventBus {
 
 export const eventBus = new EventBus();
 
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+export async function startEngine(): Promise<EngineState> {
+  const state = await storage.setEngineState("running");
+  await eventBus.emit("system", { message: "Engine started" }, "nami");
+  log("Engine started", "engine");
+
+  const hbConfig = await storage.getHeartbeatConfig();
+  if (hbConfig.enabled) {
+    startHeartbeat();
+  }
+
+  await storage.addThought({
+    content: "Engine initialized. Ready to orchestrate agents and swarms.",
+    source: "nami",
+    type: "observation",
+  });
+
+  return state;
+}
+
+export async function pauseEngine(): Promise<EngineState> {
+  stopHeartbeat();
+  const state = await storage.setEngineState("paused");
+  await eventBus.emit("system", { message: "Engine paused" }, "nami");
+  log("Engine paused", "engine");
+  return state;
+}
+
+export async function stopEngine(): Promise<EngineState> {
+  stopHeartbeat();
+  const state = await storage.setEngineState("stopped");
+  await eventBus.emit("system", { message: "Engine stopped" }, "nami");
+  log("Engine stopped", "engine");
+  return state;
+}
+
+export function startHeartbeat() {
+  stopHeartbeat();
+  storage.getHeartbeatConfig().then((config) => {
+    if (!config.enabled) return;
+    const intervalMs = (config.intervalSeconds || 30) * 1000;
+    log(`Heartbeat started: every ${config.intervalSeconds}s`, "engine");
+
+    heartbeatTimer = setInterval(async () => {
+      try {
+        const engineState = await storage.getEngineState();
+        if (engineState !== "running") return;
+
+        const hbConfig = await storage.getHeartbeatConfig();
+        if (!hbConfig.enabled) {
+          stopHeartbeat();
+          return;
+        }
+
+        if (hbConfig.maxBeats > 0 && hbConfig.totalBeats >= hbConfig.maxBeats) {
+          stopHeartbeat();
+          await storage.updateHeartbeatConfig({ enabled: false });
+          log("Heartbeat max beats reached, stopping", "engine");
+          return;
+        }
+
+        await executeHeartbeat(hbConfig.instruction);
+        await storage.updateHeartbeatConfig({ totalBeats: hbConfig.totalBeats + 1 });
+      } catch (err: any) {
+        log(`Heartbeat error: ${err.message}`, "engine");
+      }
+    }, intervalMs);
+  });
+}
+
+export function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+    log("Heartbeat stopped", "engine");
+  }
+}
+
+async function executeHeartbeat(instruction: string) {
+  const agents = await storage.getAgents();
+  const swarms = await storage.getSwarms();
+  const activeAgents = agents.filter((a) => a.status === "running");
+  const idleAgents = agents.filter((a) => a.status === "idle");
+
+  const contextParts = [
+    `Active agents: ${activeAgents.length}/${agents.length}`,
+    `Idle agents: ${idleAgents.length}`,
+    `Total swarms: ${swarms.length}`,
+    `Active swarms: ${swarms.filter((s) => s.status === "active").length}`,
+  ];
+
+  const systemContext = contextParts.join(". ");
+
+  await storage.addThought({
+    content: `Heartbeat triggered. ${systemContext}`,
+    source: "nami",
+    type: "observation",
+  });
+
+  if (activeAgents.length === 0 && swarms.filter((s) => s.status === "active").length === 0) {
+    await storage.addChatMessage({
+      role: "assistant",
+      content: "< SLEEP >",
+      agentId: "nami",
+      agentName: "Nami",
+      tokensUsed: 0,
+      autonomous: true,
+    });
+
+    await eventBus.emit("heartbeat", { status: "sleep", context: systemContext }, "nami");
+    log("Heartbeat: SLEEP (no active work)", "engine");
+    return;
+  }
+
+  try {
+    const config = await storage.getConfig();
+    const messages: OpenRouterMessage[] = [
+      { role: "system", content: NAMI_SYSTEM_PROMPT },
+      { role: "user", content: `[HEARTBEAT] ${instruction}\n\nCurrent state: ${systemContext}` },
+    ];
+
+    const { content, tokensUsed } = await chatCompletion(messages, { model: config.defaultModel });
+
+    await storage.addChatMessage({
+      role: "assistant",
+      content,
+      agentId: "nami",
+      agentName: "Nami",
+      tokensUsed,
+      autonomous: true,
+    });
+
+    await storage.addThought({
+      content: `Heartbeat response: ${content.substring(0, 200)}`,
+      source: "nami",
+      type: "reflection",
+    });
+
+    await eventBus.emit("heartbeat", { status: "active", tokensUsed, response: content.substring(0, 200) }, "nami");
+    log(`Heartbeat: active response, ${tokensUsed} tokens`, "engine");
+  } catch (err: any) {
+    await storage.addChatMessage({
+      role: "assistant",
+      content: "< SLEEP >",
+      agentId: "nami",
+      agentName: "Nami",
+      tokensUsed: 0,
+      autonomous: true,
+    });
+    log(`Heartbeat inference failed: ${err.message}`, "engine");
+  }
+}
+
 export async function createSpawn(data: {
   name: string;
   model: string;
@@ -40,6 +194,19 @@ export async function createSpawn(data: {
   });
 
   await eventBus.emit("agent_created", { name: agent.name, role: "spawn", agentId: agent.id }, "nami");
+
+  await storage.addThought({
+    content: `Created spawn agent "${agent.name}" with model ${agent.model}`,
+    source: "nami",
+    type: "planning",
+  });
+
+  await storage.addMemory({
+    content: `Spawn "${agent.name}" created with model ${agent.model}. Role: ${agent.systemPrompt.substring(0, 100)}`,
+    category: "agents",
+    importance: 5,
+  });
+
   log(`Spawn created: ${agent.name} (${agent.id})`, "engine");
   return agent;
 }
@@ -83,6 +250,19 @@ export async function createSwarmWithQueen(data: {
   });
 
   await eventBus.emit("swarm_created", { name: swarm.name, goal: swarm.goal, swarmId: swarm.id, queenId: queen.id }, "nami");
+
+  await storage.addThought({
+    content: `Created swarm "${swarm.name}" with goal: ${swarm.goal}. SwarmQueen assigned.`,
+    source: "nami",
+    type: "planning",
+  });
+
+  await storage.addMemory({
+    content: `Swarm "${swarm.name}" created. Goal: ${swarm.goal}. Objective: ${swarm.objective}`,
+    category: "swarms",
+    importance: 7,
+  });
+
   log(`Swarm created: ${swarm.name} with queen ${queen.name}`, "engine");
 
   const updatedSwarm = await storage.getSwarm(swarm.id);
@@ -222,6 +402,13 @@ export async function chatWithNami(userMessage: string): Promise<{ content: stri
     agentId: null,
     agentName: null,
     tokensUsed: 0,
+    autonomous: false,
+  });
+
+  await storage.addThought({
+    content: `User message received: "${userMessage.substring(0, 100)}"`,
+    source: "nami",
+    type: "observation",
   });
 
   const history = await storage.getChatHistory();
@@ -239,6 +426,13 @@ export async function chatWithNami(userMessage: string): Promise<{ content: stri
     agentId: "nami",
     agentName: "Nami",
     tokensUsed,
+    autonomous: false,
+  });
+
+  await storage.addThought({
+    content: `Responded to user: "${content.substring(0, 100)}"`,
+    source: "nami",
+    type: "reasoning",
   });
 
   await eventBus.emit("message_sent", { agentName: "Nami", content: content.substring(0, 200), tokensUsed }, "nami");

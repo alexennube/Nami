@@ -3,7 +3,7 @@ import { storage } from "./storage";
 import { log } from "./index";
 
 export interface ChatMessage {
-  role: "system" | "user" | "assistant" | "tool";
+  role: "system" | "user" | "assistant";
   content: string;
 }
 
