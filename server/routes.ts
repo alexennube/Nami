@@ -278,7 +278,11 @@ export async function registerRoutes(
 
   app.put("/api/config", async (req, res) => {
     try {
-      const config = await storage.updateConfig(req.body);
+      const updates = { ...req.body };
+      if (!updates.openRouterApiKey || updates.openRouterApiKey === "sk-or-v1-****" || updates.openRouterApiKey.length < 10) {
+        delete updates.openRouterApiKey;
+      }
+      const config = await storage.updateConfig(updates);
       const safeConfig = { ...config, openRouterApiKey: config.openRouterApiKey ? "sk-or-v1-****" : "" };
       res.json(safeConfig);
     } catch (error: any) {

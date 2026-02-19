@@ -14,13 +14,20 @@ export interface ChatOptions {
   stream?: boolean;
 }
 
-export async function createOpenRouterClient(): Promise<OpenAI> {
+export async function getApiKey(): Promise<string> {
   const config = await storage.getConfig();
-  const apiKey = config.openRouterApiKey || process.env.OPENROUTER_API_KEY;
-
-  if (!apiKey) {
+  const configKey = config.openRouterApiKey;
+  const envKey = process.env.OPENROUTER_API_KEY;
+  const key = (configKey && configKey !== "sk-or-v1-****" && configKey.length > 10) ? configKey : envKey;
+  if (!key) {
     throw new Error("OpenRouter API key not configured. Set it in Settings or as OPENROUTER_API_KEY environment variable.");
   }
+  return key;
+}
+
+export async function createOpenRouterClient(): Promise<OpenAI> {
+  const config = await storage.getConfig();
+  const apiKey = await getApiKey();
 
   return new OpenAI({
     apiKey,
