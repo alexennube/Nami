@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
-import { insertAgentSchema, insertSwarmSchema, insertPinnedChatSchema, skillSchema } from "@shared/schema";
+import { insertAgentSchema, insertSwarmSchema, insertPinnedChatSchema, skillSchema, swarmScheduleSchema } from "@shared/schema";
 import { log } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
 import { engineMind } from "./engine-mind";
@@ -153,6 +153,7 @@ export async function registerRoutes(
         goal: data.goal,
         objective: data.objective,
         steps: data.steps,
+        schedule: data.schedule,
       });
       res.status(201).json(swarm);
     } catch (error: any) {
@@ -429,6 +430,42 @@ export async function registerRoutes(
 
   app.put("/api/tools/permissions", async (req, res) => {
     const updated = updatePermissions(req.body);
+    res.json(updated);
+  });
+
+  app.patch("/api/swarms/:id/schedule", async (req, res) => {
+    const { id } = req.params;
+    const swarm = await storage.getSwarm(id);
+    if (!swarm) {
+      res.status(404).json({ message: "Swarm not found" });
+      return;
+    }
+
+    const parsed = swarmScheduleSchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: "Invalid schedule data", errors: parsed.error.flatten() });
+      return;
+    }
+
+    const currentSchedule = swarm.schedule || {
+      enabled: false,
+      type: "interval" as const,
+      intervalHours: 24,
+      dailyTime: "09:00",
+      weeklyDays: [1],
+      nextRunAt: null,
+      lastRunAt: null,
+      runCount: 0,
+    };
+
+    const updatedSchedule = { ...currentSchedule, ...parsed.data };
+    const updated = await storage.updateSwarm(id, { schedule: updatedSchedule });
+
+    if (updatedSchedule.enabled && swarm.status === "completed") {
+      const { transitionSwarmToSleeping } = await import("./engine");
+      await transitionSwarmToSleeping(id);
+    }
+
     res.json(updated);
   });
 

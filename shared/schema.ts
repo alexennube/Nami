@@ -6,8 +6,23 @@ export type AgentStatus = z.infer<typeof AgentStatus>;
 export const AgentRole = z.enum(["nami", "spawn", "swarm_queen"]);
 export type AgentRole = z.infer<typeof AgentRole>;
 
-export const SwarmStatus = z.enum(["pending", "active", "paused", "completed", "failed"]);
+export const SwarmStatus = z.enum(["pending", "active", "paused", "completed", "failed", "sleeping"]);
 export type SwarmStatus = z.infer<typeof SwarmStatus>;
+
+export const ScheduleType = z.enum(["interval", "daily", "weekly"]);
+export type ScheduleType = z.infer<typeof ScheduleType>;
+
+export const swarmScheduleSchema = z.object({
+  enabled: z.boolean().default(false),
+  type: ScheduleType.default("interval"),
+  intervalHours: z.number().min(0.5).default(24),
+  dailyTime: z.string().default("09:00"),
+  weeklyDays: z.array(z.number().min(0).max(6)).default([1]),
+  nextRunAt: z.string().nullable().default(null),
+  lastRunAt: z.string().nullable().default(null),
+  runCount: z.number().default(0),
+});
+export type SwarmSchedule = z.infer<typeof swarmScheduleSchema>;
 
 export const StepStatus = z.enum(["pending", "running", "completed", "failed", "skipped"]);
 export type StepStatus = z.infer<typeof StepStatus>;
@@ -62,6 +77,7 @@ export const swarmSchema = z.object({
   completedAt: z.string().nullable(),
   progress: z.number().default(0),
   maxCycles: z.number().optional(),
+  schedule: swarmScheduleSchema.optional(),
 });
 export type Swarm = z.infer<typeof swarmSchema>;
 
@@ -72,6 +88,14 @@ export const insertSwarmStepSchema = z.object({
   agentId: z.string().nullable().optional(),
 });
 
+export const insertSwarmScheduleSchema = z.object({
+  enabled: z.boolean().default(false),
+  type: ScheduleType.default("interval"),
+  intervalHours: z.number().min(0.5).default(24),
+  dailyTime: z.string().default("09:00"),
+  weeklyDays: z.array(z.number().min(0).max(6)).default([1]),
+});
+
 export const insertSwarmSchema = z.object({
   name: z.string(),
   goal: z.string(),
@@ -79,6 +103,7 @@ export const insertSwarmSchema = z.object({
   status: SwarmStatus,
   steps: z.array(insertSwarmStepSchema).optional(),
   maxCycles: z.number().optional(),
+  schedule: insertSwarmScheduleSchema.optional(),
 });
 export type InsertSwarm = z.infer<typeof insertSwarmSchema>;
 
@@ -244,7 +269,7 @@ export type SystemStats = z.infer<typeof systemStatsSchema>;
 
 export const eventSchema = z.object({
   id: z.string(),
-  type: z.enum(["agent_created", "agent_status_changed", "swarm_created", "swarm_completed", "step_completed", "message_sent", "heartbeat", "thought", "error", "system"]),
+  type: z.enum(["agent_created", "agent_status_changed", "swarm_created", "swarm_completed", "swarm_sleeping", "swarm_scheduled_start", "step_completed", "message_sent", "heartbeat", "thought", "error", "system"]),
   payload: z.record(z.any()),
   timestamp: z.string(),
   source: z.string(),

@@ -10,6 +10,8 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   terminated: { label: "Terminated", className: "bg-muted text-muted-foreground" },
   pending: { label: "Pending", className: "bg-muted text-muted-foreground" },
   active: { label: "Active", className: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" },
+  sleeping: { label: "Sleeping", className: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400" },
+  cancelled: { label: "Cancelled", className: "bg-muted text-muted-foreground" },
 };
 
 interface StatusBadgeProps {

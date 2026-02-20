@@ -253,6 +253,16 @@ export class MemStorage implements IStorage {
       output: null,
       order: i,
     }));
+    const schedule = data.schedule?.enabled ? {
+      enabled: true,
+      type: data.schedule.type || "interval",
+      intervalHours: data.schedule.intervalHours || 24,
+      dailyTime: data.schedule.dailyTime || "09:00",
+      weeklyDays: data.schedule.weeklyDays || [1],
+      nextRunAt: null,
+      lastRunAt: null,
+      runCount: 0,
+    } : undefined;
     const swarm: Swarm = {
       id,
       name: data.name,
@@ -266,6 +276,7 @@ export class MemStorage implements IStorage {
       completedAt: null,
       progress: 0,
       maxCycles: data.maxCycles,
+      schedule,
     };
     this.swarms.set(id, swarm);
     this.persistSwarms();

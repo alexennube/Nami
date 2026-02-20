@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { StatusBadge } from "@/components/status-badge";
-import { ArrowLeft, Crown, Bot, Network, Target, Brain, AlertCircle, CheckCircle2, Zap, MessageSquare } from "lucide-react";
+import { ArrowLeft, Crown, Bot, Network, Target, Brain, AlertCircle, CheckCircle2, Zap, MessageSquare, Timer, Moon } from "lucide-react";
 import type { Swarm, Agent, SwarmMessage } from "@shared/schema";
 import { useEffect, useRef } from "react";
 
@@ -168,6 +168,31 @@ export default function SwarmDetail() {
           )}
         </div>
       </div>
+
+      {swarm.schedule?.enabled && (
+        <div className="flex items-center gap-3 px-4 py-2.5 border-b shrink-0 bg-indigo-500/5">
+          <Timer className="w-4 h-4 text-indigo-500 shrink-0" />
+          <div className="flex flex-col gap-0 min-w-0 flex-1">
+            <span className="text-[11px] font-medium">
+              {swarm.schedule.type === "interval"
+                ? `Repeats every ${swarm.schedule.intervalHours} hour${swarm.schedule.intervalHours !== 1 ? "s" : ""}`
+                : swarm.schedule.type === "daily"
+                  ? `Runs daily at ${swarm.schedule.dailyTime}`
+                  : `Runs weekly on ${(swarm.schedule.weeklyDays || []).map((d: number) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]).join(", ")} at ${swarm.schedule.dailyTime}`}
+            </span>
+            <span className="text-[10px] text-muted-foreground">
+              {swarm.schedule.runCount > 0 ? `${swarm.schedule.runCount} run${swarm.schedule.runCount !== 1 ? "s" : ""} completed` : "Awaiting first run"}
+              {swarm.schedule.lastRunAt && ` · Last: ${new Date(swarm.schedule.lastRunAt).toLocaleString()}`}
+              {swarm.schedule.nextRunAt && ` · Next: ${new Date(swarm.schedule.nextRunAt).toLocaleString()}`}
+            </span>
+          </div>
+          {swarm.status === "sleeping" && (
+            <Badge variant="outline" className="bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border-transparent text-[10px] shrink-0">
+              <Moon className="w-2.5 h-2.5 mr-1" /> Sleeping
+            </Badge>
+          )}
+        </div>
+      )}
 
       <div className="flex-1 overflow-hidden relative">
         {msgsLoading ? (

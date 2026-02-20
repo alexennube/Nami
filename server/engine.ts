@@ -2,7 +2,7 @@ import { storage } from "./storage";
 import { chatCompletion, type ChatMessage as OpenRouterMessage } from "./openrouter";
 import { log } from "./index";
 import { engineMind } from "./engine-mind";
-import type { Agent, Swarm, NamiEvent, EngineState } from "@shared/schema";
+import type { Agent, Swarm, SwarmSchedule, NamiEvent, EngineState } from "@shared/schema";
 
 type EventCallback = (event: NamiEvent) => void;
 
@@ -24,8 +24,147 @@ class EventBus {
 export const eventBus = new EventBus();
 
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+let scheduleTimer: ReturnType<typeof setTimeout> | null = null;
 let consecutiveErrors = 0;
 const MAX_BACKOFF_MS = 5 * 60 * 1000;
+const SCHEDULE_CHECK_INTERVAL_MS = 30 * 1000;
+
+function computeNextRunAt(schedule: SwarmSchedule): string {
+  const now = new Date();
+
+  if (schedule.type === "interval") {
+    return new Date(now.getTime() + schedule.intervalHours * 60 * 60 * 1000).toISOString();
+  }
+
+  if (schedule.type === "daily") {
+    const [hours, minutes] = schedule.dailyTime.split(":").map(Number);
+    const next = new Date(now);
+    next.setHours(hours, minutes, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    return next.toISOString();
+  }
+
+  if (schedule.type === "weekly") {
+    const [hours, minutes] = schedule.dailyTime.split(":").map(Number);
+    if (!schedule.weeklyDays || schedule.weeklyDays.length === 0) {
+      return new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    }
+    const sortedDays = [...schedule.weeklyDays].sort();
+    const currentDay = now.getDay();
+
+    for (const day of sortedDays) {
+      if (day > currentDay || (day === currentDay)) {
+        const next = new Date(now);
+        next.setDate(now.getDate() + (day - currentDay));
+        next.setHours(hours, minutes, 0, 0);
+        if (next > now) return next.toISOString();
+      }
+    }
+
+    const firstDay = sortedDays[0];
+    const daysUntil = 7 - currentDay + firstDay;
+    const next = new Date(now);
+    next.setDate(now.getDate() + daysUntil);
+    next.setHours(hours, minutes, 0, 0);
+    return next.toISOString();
+  }
+
+  return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+}
+
+export async function transitionSwarmToSleeping(swarmId: string): Promise<void> {
+  const swarm = await storage.getSwarm(swarmId);
+  if (!swarm || !swarm.schedule?.enabled) return;
+
+  const nextRunAt = computeNextRunAt(swarm.schedule);
+  const updatedSchedule: SwarmSchedule = {
+    ...swarm.schedule,
+    lastRunAt: new Date().toISOString(),
+    nextRunAt,
+    runCount: swarm.schedule.runCount + 1,
+  };
+
+  await storage.updateSwarm(swarmId, {
+    status: "sleeping",
+    completedAt: new Date().toISOString(),
+    schedule: updatedSchedule,
+  });
+
+  await storage.addSwarmMessage({
+    swarmId,
+    agentId: null,
+    agentName: "Scheduler",
+    content: `Objective completed. Swarm sleeping until next run: ${new Date(nextRunAt).toLocaleString()}`,
+    type: "system",
+  });
+
+  await eventBus.emit("swarm_sleeping", { swarmId, name: swarm.name, nextRunAt }, "scheduler");
+  log(`Swarm ${swarm.name} sleeping until ${nextRunAt}`, "scheduler");
+}
+
+async function checkScheduledSwarms(): Promise<void> {
+  const swarms = await storage.getSwarms();
+  const now = new Date();
+
+  for (const swarm of swarms) {
+    if (swarm.status !== "sleeping" || !swarm.schedule?.enabled || !swarm.schedule.nextRunAt) continue;
+
+    const nextRun = new Date(swarm.schedule.nextRunAt);
+    if (nextRun <= now) {
+      log(`Scheduled swarm "${swarm.name}" is due, activating...`, "scheduler");
+
+      await storage.updateSwarm(swarm.id, {
+        status: "active",
+        progress: 0,
+        completedAt: null,
+      });
+
+      await storage.addSwarmMessage({
+        swarmId: swarm.id,
+        agentId: null,
+        agentName: "Scheduler",
+        content: `Scheduled run #${(swarm.schedule.runCount || 0) + 1} starting now.`,
+        type: "system",
+      });
+
+      await eventBus.emit("swarm_scheduled_start", { swarmId: swarm.id, name: swarm.name, runCount: swarm.schedule.runCount + 1 }, "scheduler");
+
+      const queen = swarm.queenId ? await storage.getAgent(swarm.queenId) : null;
+      if (queen) {
+        await storage.updateAgent(queen.id, { status: "running" });
+        runSwarmQueen(swarm.id).catch((err: any) => {
+          log(`Scheduled queen loop error: ${err.message}`, "scheduler");
+        });
+      }
+    }
+  }
+}
+
+export function startScheduleChecker() {
+  stopScheduleChecker();
+  log("Schedule checker started", "scheduler");
+
+  const tick = async () => {
+    try {
+      const engineState = await storage.getEngineState();
+      if (engineState === "running") {
+        await checkScheduledSwarms();
+      }
+    } catch (err: any) {
+      log(`Schedule checker error: ${err.message}`, "scheduler");
+    }
+    scheduleTimer = setTimeout(tick, SCHEDULE_CHECK_INTERVAL_MS);
+  };
+
+  scheduleTimer = setTimeout(tick, SCHEDULE_CHECK_INTERVAL_MS);
+}
+
+export function stopScheduleChecker() {
+  if (scheduleTimer) {
+    clearTimeout(scheduleTimer);
+    scheduleTimer = null;
+  }
+}
 
 export async function bootEngine(): Promise<void> {
   const engineState = await storage.getEngineState();
@@ -44,11 +183,13 @@ export async function bootEngine(): Promise<void> {
       startHeartbeat();
     }
 
+    startScheduleChecker();
+
     engineMind.initialize().then(ok => {
       if (ok) log("Engine Mind (Pi) initialized on boot", "engine");
     }).catch(err => log(`Engine Mind boot error: ${err.message}`, "engine"));
 
-    log("Engine auto-booted: RUNNING with heartbeat", "engine");
+    log("Engine auto-booted: RUNNING with heartbeat and scheduler", "engine");
   } else {
     log(`Engine boot skipped: state is ${engineState}`, "engine");
   }
@@ -376,6 +517,7 @@ export async function createSwarmWithQueen(data: {
   objective: string;
   maxCycles?: number;
   steps?: Array<{ name: string; type: "prompt" | "code"; instruction: string; agentId?: string | null }>;
+  schedule?: any;
 }): Promise<{ swarm: Swarm; queen: Agent }> {
   const swarm = await storage.createSwarm({
     name: data.name,
@@ -384,6 +526,7 @@ export async function createSwarmWithQueen(data: {
     status: "pending",
     steps: data.steps,
     maxCycles: data.maxCycles,
+    schedule: data.schedule,
   });
 
   const queen = await createSwarmQueen(swarm.id, data.goal);
@@ -477,6 +620,13 @@ export async function swarmAction(swarmId: string, action: string): Promise<Swar
       break;
     default:
       throw new Error(`Unknown swarm action: ${action}`);
+  }
+
+  if (newStatus === "completed" && swarm.schedule?.enabled) {
+    await transitionSwarmToSleeping(swarmId);
+    log(`Swarm ${swarm.name} action: ${action} -> sleeping (scheduled)`, "engine");
+    const sleeping = await storage.getSwarm(swarmId);
+    return sleeping || swarm;
   }
 
   const updated = await storage.updateSwarm(swarmId, { status: newStatus, completedAt: newStatus === "completed" ? new Date().toISOString() : null });
@@ -967,12 +1117,6 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
           const parsed = JSON.parse(completeMatch[1].trim());
           const summary = parsed.summary || "Objective completed";
 
-          await storage.updateSwarm(swarmId, {
-            status: "completed",
-            progress: 100,
-            completedAt: new Date().toISOString(),
-          });
-
           await storage.updateAgent(queen.id, { status: "completed" });
 
           await storage.addChatMessage({
@@ -998,8 +1142,19 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
             type: "reflection",
           });
 
-          await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary }, "swarm_queen");
-          log(`SwarmQueen completed swarm ${swarm.name}: ${summary}`, "engine");
+          const currentSwarmForSchedule = await storage.getSwarm(swarmId);
+          if (currentSwarmForSchedule?.schedule?.enabled) {
+            await transitionSwarmToSleeping(swarmId);
+            log(`SwarmQueen completed swarm ${swarm.name}, transitioning to sleeping (scheduled)`, "engine");
+          } else {
+            await storage.updateSwarm(swarmId, {
+              status: "completed",
+              progress: 100,
+              completedAt: new Date().toISOString(),
+            });
+            await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary }, "swarm_queen");
+            log(`SwarmQueen completed swarm ${swarm.name}: ${summary}`, "engine");
+          }
           return;
         } catch (parseErr: any) {
           log(`SwarmQueen complete parse error: ${parseErr.message}`, "engine");
@@ -1045,11 +1200,6 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
 
   const finalSwarm = await storage.getSwarm(swarmId);
   if (finalSwarm && finalSwarm.status === "active") {
-    await storage.updateSwarm(swarmId, {
-      status: "completed",
-      progress: 100,
-      completedAt: new Date().toISOString(),
-    });
     await storage.updateAgent(queen.id, { status: "completed" });
 
     await storage.addChatMessage({
@@ -1069,8 +1219,18 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
       type: "completion",
     });
 
-    await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary: "Max cycles reached" }, "swarm_queen");
-    log(`SwarmQueen max cycles reached for swarm ${swarm.name}`, "engine");
+    if (finalSwarm.schedule?.enabled) {
+      await transitionSwarmToSleeping(swarmId);
+      log(`SwarmQueen max cycles reached for swarm ${swarm.name}, transitioning to sleeping (scheduled)`, "engine");
+    } else {
+      await storage.updateSwarm(swarmId, {
+        status: "completed",
+        progress: 100,
+        completedAt: new Date().toISOString(),
+      });
+      await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary: "Max cycles reached" }, "swarm_queen");
+      log(`SwarmQueen max cycles reached for swarm ${swarm.name}`, "engine");
+    }
   }
 }
 
@@ -1104,6 +1264,14 @@ export async function runSwarmSteps(swarmId: string): Promise<Swarm> {
       await storage.updateSwarm(swarmId, { steps: updatedSteps, status: "failed" });
       throw error;
     }
+  }
+
+  const latestSwarm = await storage.getSwarm(swarmId);
+  if (latestSwarm?.schedule?.enabled) {
+    await transitionSwarmToSleeping(swarmId);
+    log(`Swarm steps completed for ${swarm.name}, transitioning to sleeping (scheduled)`, "engine");
+    const sleeping = await storage.getSwarm(swarmId);
+    return sleeping!;
   }
 
   const completed = await storage.updateSwarm(swarmId, { status: "completed", progress: 100, completedAt: new Date().toISOString() });

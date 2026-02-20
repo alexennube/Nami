@@ -15,8 +15,9 @@ import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Network, Plus, Crown, Bot, Play, Pause, Trash2, Target, Code, MessageSquare, ChevronDown, ChevronRight, Zap, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
-import type { Swarm, Agent, SwarmStep } from "@shared/schema";
+import { Switch } from "@/components/ui/switch";
+import { Network, Plus, Crown, Bot, Play, Pause, Trash2, Target, Code, MessageSquare, ChevronDown, ChevronRight, Zap, CheckCircle2, XCircle, ExternalLink, Clock, Moon, Timer, Calendar } from "lucide-react";
+import type { Swarm, Agent, SwarmStep, SwarmSchedule } from "@shared/schema";
 
 type NewStep = { name: string; type: "prompt" | "code"; instruction: string };
 
@@ -27,6 +28,11 @@ function CreateSwarmDialog() {
   const [objective, setObjective] = useState("");
   const [steps, setSteps] = useState<NewStep[]>([]);
   const [showSteps, setShowSteps] = useState(false);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleType, setScheduleType] = useState<"interval" | "daily" | "weekly">("interval");
+  const [intervalHours, setIntervalHours] = useState(24);
+  const [dailyTime, setDailyTime] = useState("09:00");
+  const [weeklyDays, setWeeklyDays] = useState<number[]>([1]);
   const { toast } = useToast();
 
   function addStep() {
@@ -50,6 +56,18 @@ function CreateSwarmDialog() {
       if (steps.length > 0) {
         payload.steps = steps.filter((s) => s.name && s.instruction);
       }
+      if (scheduleEnabled) {
+        payload.schedule = {
+          enabled: true,
+          type: scheduleType,
+          intervalHours,
+          dailyTime,
+          weeklyDays,
+          nextRunAt: null,
+          lastRunAt: null,
+          runCount: 0,
+        };
+      }
       const res = await apiRequest("POST", "/api/swarms", payload);
       return res.json();
     },
@@ -62,6 +80,11 @@ function CreateSwarmDialog() {
       setGoal("");
       setObjective("");
       setSteps([]);
+      setScheduleEnabled(false);
+      setScheduleType("interval");
+      setIntervalHours(24);
+      setDailyTime("09:00");
+      setWeeklyDays([1]);
       toast({ title: "Swarm created", description: `${name} swarm with SwarmQueen is ready.` });
     },
     onError: (err: Error) => {
@@ -149,6 +172,67 @@ function CreateSwarmDialog() {
                     </div>
                   </Card>
                 ))}
+              </div>
+            )}
+          </div>
+
+          <div className="border-t pt-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Timer className="w-4 h-4 text-indigo-500" />
+                <Label className="text-sm">Schedule (recurring)</Label>
+              </div>
+              <Switch checked={scheduleEnabled} onCheckedChange={setScheduleEnabled} data-testid="switch-schedule-enabled" />
+            </div>
+            {scheduleEnabled && (
+              <div className="flex flex-col gap-3 mt-3">
+                <div className="flex flex-col gap-2">
+                  <Label className="text-xs">Schedule Type</Label>
+                  <Select value={scheduleType} onValueChange={(v) => setScheduleType(v as "interval" | "daily" | "weekly")}>
+                    <SelectTrigger data-testid="select-schedule-type">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="interval">Interval (every N hours)</SelectItem>
+                      <SelectItem value="daily">Daily (at specific time)</SelectItem>
+                      <SelectItem value="weekly">Weekly (specific days)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {scheduleType === "interval" && (
+                  <div className="flex flex-col gap-2">
+                    <Label className="text-xs">Every (hours)</Label>
+                    <Input type="number" min={1} max={720} value={intervalHours} onChange={(e) => setIntervalHours(parseInt(e.target.value) || 1)} data-testid="input-interval-hours" />
+                  </div>
+                )}
+                {scheduleType === "daily" && (
+                  <div className="flex flex-col gap-2">
+                    <Label className="text-xs">Run at (24h time)</Label>
+                    <Input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)} data-testid="input-daily-time" />
+                  </div>
+                )}
+                {scheduleType === "weekly" && (
+                  <div className="flex flex-col gap-2">
+                    <Label className="text-xs">Run at (24h time)</Label>
+                    <Input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)} data-testid="input-weekly-time" />
+                    <Label className="text-xs mt-1">Days of week</Label>
+                    <div className="flex gap-1 flex-wrap">
+                      {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day, idx) => (
+                        <Button
+                          key={day}
+                          type="button"
+                          size="sm"
+                          variant={weeklyDays.includes(idx) ? "default" : "outline"}
+                          className="text-[10px] h-7 w-10"
+                          onClick={() => setWeeklyDays(weeklyDays.includes(idx) ? weeklyDays.filter((d) => d !== idx) : [...weeklyDays, idx].sort())}
+                          data-testid={`button-day-${idx}`}
+                        >
+                          {day}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -285,6 +369,30 @@ function SwarmCard({ swarm }: { swarm: Swarm }) {
 
         <StepsList steps={swarm.steps || []} />
 
+        {swarm.schedule?.enabled && (
+          <div className="flex items-center gap-2 mt-3 p-2 rounded-md bg-indigo-500/5 border border-indigo-500/10">
+            <Timer className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <div className="flex flex-col gap-0 min-w-0">
+              <span className="text-[11px] font-medium">
+                {swarm.schedule.type === "interval"
+                  ? `Every ${swarm.schedule.intervalHours}h`
+                  : swarm.schedule.type === "daily"
+                    ? `Daily at ${swarm.schedule.dailyTime}`
+                    : `Weekly ${(swarm.schedule.weeklyDays || []).map((d: number) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]).join(", ")} at ${swarm.schedule.dailyTime}`}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                {swarm.schedule.runCount > 0 ? `${swarm.schedule.runCount} runs` : "Not yet run"}
+                {swarm.schedule.nextRunAt && ` · Next: ${new Date(swarm.schedule.nextRunAt).toLocaleString()}`}
+              </span>
+            </div>
+            {swarm.status === "sleeping" && (
+              <Badge variant="outline" className="bg-indigo-500/15 text-indigo-700 dark:text-indigo-400 border-transparent text-[10px] ml-auto shrink-0">
+                <Moon className="w-2.5 h-2.5 mr-1" /> Sleeping
+              </Badge>
+            )}
+          </div>
+        )}
+
         <div className="mt-3">
           <div className="flex items-center justify-between gap-2 mb-1">
             <span className="text-[10px] text-muted-foreground">Progress</span>
@@ -344,9 +452,10 @@ function SwarmCard({ swarm }: { swarm: Swarm }) {
   );
 }
 
-type FilterTab = "active" | "completed" | "cancelled";
+type FilterTab = "active" | "scheduled" | "completed" | "cancelled";
 
 const ACTIVE_STATUSES = ["active", "pending", "paused"];
+const SCHEDULED_STATUSES = ["sleeping"];
 const COMPLETED_STATUSES = ["completed"];
 const CANCELLED_STATUSES = ["cancelled", "failed"];
 
@@ -354,6 +463,8 @@ function filterSwarms(swarms: Swarm[], tab: FilterTab): Swarm[] {
   switch (tab) {
     case "active":
       return swarms.filter((s) => ACTIVE_STATUSES.includes(s.status));
+    case "scheduled":
+      return swarms.filter((s) => SCHEDULED_STATUSES.includes(s.status) || (s.schedule?.enabled && ACTIVE_STATUSES.includes(s.status)));
     case "completed":
       return swarms.filter((s) => COMPLETED_STATUSES.includes(s.status));
     case "cancelled":
@@ -366,6 +477,7 @@ function filterSwarms(swarms: Swarm[], tab: FilterTab): Swarm[] {
 function countByFilter(swarms: Swarm[]): Record<FilterTab, number> {
   return {
     active: swarms.filter((s) => ACTIVE_STATUSES.includes(s.status)).length,
+    scheduled: swarms.filter((s) => SCHEDULED_STATUSES.includes(s.status) || (s.schedule?.enabled && ACTIVE_STATUSES.includes(s.status))).length,
     completed: swarms.filter((s) => COMPLETED_STATUSES.includes(s.status)).length,
     cancelled: swarms.filter((s) => CANCELLED_STATUSES.includes(s.status)).length,
   };
@@ -375,7 +487,7 @@ export default function Swarms() {
   const [filter, setFilter] = useState<FilterTab>("active");
   const { data: swarms, isLoading } = useQuery<Swarm[]>({ queryKey: ["/api/swarms"] });
 
-  const counts = swarms ? countByFilter(swarms) : { active: 0, completed: 0, cancelled: 0 };
+  const counts = swarms ? countByFilter(swarms) : { active: 0, scheduled: 0, completed: 0, cancelled: 0 };
   const filtered = swarms ? filterSwarms(swarms, filter) : [];
 
   return (
@@ -400,6 +512,13 @@ export default function Swarms() {
           Active
           {counts.active > 0 && (
             <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4 min-w-4 justify-center">{counts.active}</Badge>
+          )}
+        </ToggleGroupItem>
+        <ToggleGroupItem value="scheduled" aria-label="Scheduled swarms" className="gap-1.5 text-xs" data-testid="toggle-filter-scheduled">
+          <Timer className="w-3.5 h-3.5" />
+          Scheduled
+          {counts.scheduled > 0 && (
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4 min-w-4 justify-center">{counts.scheduled}</Badge>
           )}
         </ToggleGroupItem>
         <ToggleGroupItem value="completed" aria-label="Completed swarms" className="gap-1.5 text-xs" data-testid="toggle-filter-completed">
@@ -429,14 +548,16 @@ export default function Swarms() {
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Network className="w-12 h-12 text-muted-foreground/30 mb-4" />
             <h3 className="text-sm font-medium mb-1">
-              {filter === "active" ? "No active swarms" : filter === "completed" ? "No completed swarms" : "No cancelled or failed swarms"}
+              {filter === "active" ? "No active swarms" : filter === "scheduled" ? "No scheduled swarms" : filter === "completed" ? "No completed swarms" : "No cancelled or failed swarms"}
             </h3>
             <p className="text-[11px] text-muted-foreground text-center max-w-xs">
               {filter === "active"
                 ? "Create a new swarm to coordinate agents toward a goal. Each swarm has a SwarmQueen for autonomous QA."
-                : filter === "completed"
-                  ? "Completed swarms will appear here once they finish their objectives."
-                  : "Cancelled or failed swarms will appear here."}
+                : filter === "scheduled"
+                  ? "Create a swarm with a schedule to run it automatically at set intervals, daily, or weekly."
+                  : filter === "completed"
+                    ? "Completed swarms will appear here once they finish their objectives."
+                    : "Cancelled or failed swarms will appear here."}
             </p>
           </CardContent>
         </Card>
