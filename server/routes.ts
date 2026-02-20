@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
-import { insertAgentSchema, insertSwarmSchema, insertPinnedChatSchema, skillSchema, swarmScheduleSchema } from "@shared/schema";
+import { insertAgentSchema, insertSwarmSchema, insertPinnedChatSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
 import { engineMind } from "./engine-mind";
@@ -285,6 +285,43 @@ export async function registerRoutes(
   app.delete("/api/skills/:id", async (req, res) => {
     const deleted = await storage.deleteSkill(req.params.id);
     if (!deleted) return res.status(404).json({ message: "Skill not found" });
+    res.json({ success: true });
+  });
+
+  app.get("/api/docs", async (_req, res) => {
+    const docs = await storage.getDocs();
+    res.json(docs);
+  });
+
+  app.get("/api/docs/:slug", async (req, res) => {
+    const doc = await storage.getDoc(req.params.slug);
+    if (!doc) return res.status(404).json({ message: "Doc not found" });
+    res.json(doc);
+  });
+
+  app.post("/api/docs", async (req, res) => {
+    try {
+      const data = insertDocPageSchema.parse(req.body);
+      const doc = await storage.upsertDoc(data);
+      res.status(201).json(doc);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/docs/:slug", async (req, res) => {
+    try {
+      const data = insertDocPageSchema.parse({ ...req.body, slug: req.params.slug });
+      const doc = await storage.upsertDoc(data);
+      res.json(doc);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/docs/:slug", async (req, res) => {
+    const deleted = await storage.deleteDoc(req.params.slug);
+    if (!deleted) return res.status(404).json({ message: "Doc not found" });
     res.json({ success: true });
   });
 

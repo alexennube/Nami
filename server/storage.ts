@@ -1,4 +1,4 @@
-import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, PinnedChat, InsertPinnedChat, Thought, Memory, Skill, HeartbeatConfig, HeartbeatLog, EngineState, SwarmMessage, UsageRecord, InsertUsageRecord } from "@shared/schema";
+import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, PinnedChat, InsertPinnedChat, Thought, Memory, Skill, HeartbeatConfig, HeartbeatLog, EngineState, SwarmMessage, UsageRecord, InsertUsageRecord, DocPage, InsertDocPage } from "@shared/schema";
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -18,6 +18,7 @@ const MESSAGES_FILE = path.join(PERSIST_DIR, "messages.json");
 const SKILLS_FILE = path.join(PERSIST_DIR, "skills.json");
 const PINNED_CHATS_FILE = path.join(PERSIST_DIR, "pinned-chats.json");
 const USAGE_FILE = path.join(PERSIST_DIR, "usage.json");
+const DOCS_FILE = path.join(PERSIST_DIR, "docs.json");
 
 function ensurePersistDir() {
   if (!fs.existsSync(PERSIST_DIR)) {
@@ -100,6 +101,11 @@ export interface IStorage {
   addPinnedChat(pin: InsertPinnedChat): Promise<PinnedChat>;
   deletePinnedChat(id: string): Promise<boolean>;
 
+  getDocs(): Promise<DocPage[]>;
+  getDoc(slug: string): Promise<DocPage | undefined>;
+  upsertDoc(data: InsertDocPage): Promise<DocPage>;
+  deleteDoc(slug: string): Promise<boolean>;
+
   getSwarmMessages(swarmId: string): Promise<SwarmMessage[]>;
   addSwarmMessage(message: Omit<SwarmMessage, "id" | "timestamp">): Promise<SwarmMessage>;
 
@@ -128,6 +134,7 @@ export class MemStorage implements IStorage {
   private skills: Map<string, Skill> = new Map();
   private pinnedChats: Map<string, PinnedChat> = new Map();
   private usageRecords: UsageRecord[] = [];
+  private docs: Map<string, DocPage> = new Map();
   private swarmMessages: SwarmMessage[];
   private heartbeatLogs: HeartbeatLog[] = [];
   private heartbeatConfig: HeartbeatConfig;
@@ -199,6 +206,11 @@ export class MemStorage implements IStorage {
     this.events = loadJson<NamiEvent[]>(EVENTS_FILE, []);
     this.messages = loadJson<AgentMessage[]>(MESSAGES_FILE, []);
     this.usageRecords = loadJson<UsageRecord[]>(USAGE_FILE, []);
+
+    const savedDocs = loadJson<DocPage[]>(DOCS_FILE, []);
+    for (const doc of savedDocs) {
+      this.docs.set(doc.slug, doc);
+    }
 
     console.log(`[storage] Loaded from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState}, chat: ${this.chatHistory.length} msgs, thoughts: ${this.thoughts.length}, memories: ${this.memories.size}, skills: ${this.skills.size}, pins: ${this.pinnedChats.size}, agents: ${this.agents.size}, swarms: ${this.swarms.size})`);
   }
@@ -573,6 +585,37 @@ export class MemStorage implements IStorage {
   async clearUsageRecords(): Promise<void> {
     this.usageRecords = [];
     saveJson(USAGE_FILE, []);
+  }
+
+  async getDocs(): Promise<DocPage[]> {
+    return Array.from(this.docs.values()).sort((a, b) => a.title.localeCompare(b.title));
+  }
+
+  async getDoc(slug: string): Promise<DocPage | undefined> {
+    return this.docs.get(slug);
+  }
+
+  async upsertDoc(data: InsertDocPage): Promise<DocPage> {
+    const now = new Date().toISOString();
+    const existing = this.docs.get(data.slug);
+    const doc: DocPage = {
+      ...data,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now,
+    };
+    this.docs.set(data.slug, doc);
+    this.persistDocs();
+    return doc;
+  }
+
+  async deleteDoc(slug: string): Promise<boolean> {
+    const result = this.docs.delete(slug);
+    this.persistDocs();
+    return result;
+  }
+
+  private persistDocs() {
+    saveJson(DOCS_FILE, Array.from(this.docs.values()));
   }
 }
 

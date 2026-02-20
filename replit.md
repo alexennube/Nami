@@ -44,6 +44,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `GET/POST/DELETE /api/thoughts` - Nami's internal reasoning log
 - `GET/POST/DELETE /api/memories` - Stored context and knowledge
 - `GET/POST/PUT/DELETE /api/skills` - Skill documents (markdown reference material)
+- `GET/POST/PUT/DELETE /api/docs` - Documentation pages (agent-writable knowledge base)
 - `GET/PUT /api/heartbeat` - Heartbeat configuration
 - `POST /api/engine/start|pause|stop` - Engine state control
 - `GET /api/engine/status` - Engine status (state, heartbeat count, model)
@@ -61,6 +62,8 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `POST /api/engine-mind/compact` - Trigger chat history compaction
 
 ## Recent Changes
+- 2026-02-20: Documentation system: DocPage schema (slug, title, content, lastEditedBy), docs_read/docs_write agent tools, Docs page UI with markdown rendering, CRUD API routes (/api/docs), disk persistence, sidebar nav entry. README.md added for repo sharing.
+- 2026-02-20: Repo cleanup for shareability: removed 19 unused deps (drizzle, passport, pg, etc.), dead files (drizzle.config.ts, dashboard.tsx), cleaned build script, updated .gitignore, added .env.example, updated package.json metadata.
 - 2026-02-20: Usage tracking system: UsageRecord schema with per-call prompt/completion tokens, model, cost, source (heartbeat/chat/agent/swarm). OpenRouter pricing cache with 6h TTL. recordUsage wired at all 5 chatCompletion call sites. Usage page UI with summary cards + by-source/model/swarm breakdown tabs. API routes: GET /api/usage, GET /api/usage/summary, DELETE /api/usage. Sidebar entry added.
 - 2026-02-20: Scheduled swarms feature: SwarmSchedule schema (interval/daily/weekly), "sleeping" status, schedule checker in engine heartbeat (30s), auto completion→sleeping transition, PATCH /api/swarms/:id/schedule route, UI with Scheduled filter tab, schedule controls in create dialog, schedule display on swarm cards and detail page
 - 2026-02-20: Full disk persistence for agents, swarms, events, and agent messages (.nami-data/) - all survive server restarts

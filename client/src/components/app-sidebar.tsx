@@ -33,6 +33,7 @@ import {
   Waypoints,
   Cpu,
   DollarSign,
+  FileText,
 } from "lucide-react";
 import { useState } from "react";
 import type { EngineStatus, PinnedChat } from "@shared/schema";
@@ -303,6 +304,14 @@ export function AppSidebar() {
                   <Link href="/tools" data-testid="link-tools">
                     <Wrench className="w-4 h-4" />
                     <span>Tools</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/docs"} className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
+                  <Link href="/docs" data-testid="link-docs">
+                    <FileText className="w-4 h-4" />
+                    <span>Docs</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

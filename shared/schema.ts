@@ -310,5 +310,18 @@ export const usageSummarySchema = z.object({
 });
 export type UsageSummary = z.infer<typeof usageSummarySchema>;
 
+export const docPageSchema = z.object({
+  slug: z.string(),
+  title: z.string(),
+  content: z.string(),
+  lastEditedBy: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type DocPage = z.infer<typeof docPageSchema>;
+
+export const insertDocPageSchema = docPageSchema.omit({ createdAt: true, updatedAt: true });
+export type InsertDocPage = z.infer<typeof insertDocPageSchema>;
+
 export type User = { id: string; username: string; password: string };
 export type InsertUser = { username: string; password: string };

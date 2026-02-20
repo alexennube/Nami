@@ -933,7 +933,72 @@ const pinChatTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, pinChatTool];
+const docsReadTool: NamiTool = {
+  name: "docs_read",
+  description: "Read documentation pages. Use without a slug to list all available pages, or with a slug to read a specific page. Documentation contains project knowledge, architecture decisions, runbooks, and reference material.",
+  category: "system",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      slug: {
+        type: "string",
+        description: "The slug of the doc page to read. Omit to list all available doc pages with their slugs and titles.",
+      },
+    },
+    required: [],
+  },
+  execute: async (args) => {
+    const slug = args.slug as string | undefined;
+    if (!slug) {
+      const docs = await storage.getDocs();
+      if (docs.length === 0) return "No documentation pages exist yet. Use docs_write to create one.";
+      return "Available documentation pages:\n" + docs.map((d) => `- ${d.slug}: ${d.title} (last edited by ${d.lastEditedBy}, ${d.updatedAt})`).join("\n");
+    }
+    const doc = await storage.getDoc(slug);
+    if (!doc) return `Error: Doc page '${slug}' not found. Use docs_read without a slug to list available pages.`;
+    return `# ${doc.title}\n\n${doc.content}\n\n---\nSlug: ${doc.slug} | Last edited by: ${doc.lastEditedBy} | Updated: ${doc.updatedAt}`;
+  },
+};
+
+const docsWriteTool: NamiTool = {
+  name: "docs_write",
+  description: "Create or update a documentation page. Use this to maintain project documentation, record architecture decisions, write runbooks, document APIs, or keep any reference material. If the slug already exists, the page will be updated. Use lowercase-hyphenated slugs (e.g., 'getting-started', 'api-reference', 'architecture').",
+  category: "system",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      slug: {
+        type: "string",
+        description: "URL-friendly identifier for the page (e.g., 'getting-started', 'api-reference'). Use lowercase letters and hyphens only.",
+      },
+      title: {
+        type: "string",
+        description: "Human-readable title for the page (e.g., 'Getting Started', 'API Reference')",
+      },
+      content: {
+        type: "string",
+        description: "Full markdown content of the documentation page. Supports standard markdown formatting.",
+      },
+    },
+    required: ["slug", "title", "content"],
+  },
+  execute: async (args) => {
+    const slug = (args.slug as string).toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-");
+    const title = args.title as string;
+    const content = args.content as string;
+
+    try {
+      const doc = await storage.upsertDoc({ slug, title, content, lastEditedBy: "nami" });
+      return `Documentation page "${title}" (${slug}) has been ${doc.createdAt === doc.updatedAt ? "created" : "updated"} successfully.`;
+    } catch (err: any) {
+      return `Error writing doc: ${err.message}`;
+    }
+  },
+};
+
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, pinChatTool, docsReadTool, docsWriteTool];
 
 export function getTools(): NamiTool[] {
   return allTools;
