@@ -461,7 +461,7 @@ export default function Settings() {
                       data-testid="input-mind-model-search"
                     />
                   </div>
-                  <ScrollArea className="max-h-48">
+                  <ScrollArea className="h-[300px]">
                     <div className="p-1">
                       <button
                         className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-xs hover:bg-accent"
