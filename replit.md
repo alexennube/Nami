@@ -27,7 +27,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `shared/schema.ts` - All TypeScript types and Zod schemas (including Thought, Memory, HeartbeatConfig, EngineState)
 - `server/engine.ts` - Core orchestration engine (EventBus, heartbeat loop, agent/swarm management, chat with Nami)
 - `server/openrouter.ts` - OpenRouter.ai BYOK client
-- `server/tools.ts` - Tool registry (file_read, file_write, file_list, shell_exec, self_inspect) with permissions
+- `server/tools.ts` - Tool registry (file_read, file_write, file_list, shell_exec, self_inspect, web_browse, web_search, google_workspace, ennube_mcp, create_swarm, manage_swarm) with permissions
 - `server/routes.ts` - Express API routes + WebSocket setup
 - `server/storage.ts` - In-memory storage layer with file-based config persistence
 - `client/src/App.tsx` - Main app with sidebar layout, chat as default view
@@ -54,6 +54,8 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `GET/PUT /api/tools/permissions` - Tool permission configuration
 
 ## Recent Changes
+- 2026-02-20: Added web_search tool (Perplexity via OpenRouter) for real-time web search capability
+- 2026-02-20: Swarms page filter toggle: Active / Completed / Cancelled & Failed tabs with count badges
 - 2026-02-20: Added create_swarm and manage_swarm tools for Nami's LLM function calling
 - 2026-02-20: SwarmQueen autonomous loop: queen creates spawns, delegates tasks, monitors, reviews, and completes objectives independently
 - 2026-02-20: SwarmQueen is semi-independent (immutable primary objective), hyper-focused, defaults to spawning agents for work

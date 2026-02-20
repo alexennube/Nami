@@ -647,6 +647,89 @@ const ennubeMcpTool: NamiTool = {
   },
 };
 
+const webSearchTool: NamiTool = {
+  name: "web_search",
+  description: "Search the web using Perplexity AI via OpenRouter for real-time information. Use this to find current data, research topics, look up documentation, check news, or answer questions requiring up-to-date knowledge from the internet.",
+  category: "browser",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "The search query or question to research (e.g., 'latest Node.js LTS version', 'Salesforce API rate limits 2025', 'how to use Drizzle ORM with PostgreSQL')",
+      },
+      detailed: {
+        type: "string",
+        description: "If 'true', request a more detailed/comprehensive answer. Defaults to 'false' for concise results.",
+      },
+    },
+    required: ["query"],
+  },
+  execute: async (args) => {
+    const query = args.query as string;
+    if (!query) return "Error: Please provide a search query.";
+
+    const { getApiKey } = await import("./openrouter");
+    let apiKey: string;
+    try {
+      apiKey = await getApiKey();
+    } catch {
+      return "Error: OpenRouter API key not configured. Set it in Settings or as OPENROUTER_API_KEY environment variable.";
+    }
+
+    const detailed = args.detailed === "true";
+    const maxTokens = detailed ? 2048 : 1024;
+
+    const body = {
+      model: "perplexity/sonar",
+      messages: [
+        {
+          role: "system",
+          content: detailed
+            ? "You are a research assistant. Provide comprehensive, well-structured answers with sources when available. Include relevant details, examples, and context."
+            : "You are a research assistant. Provide concise, accurate answers. Be direct and factual.",
+        },
+        { role: "user", content: query },
+      ],
+      max_tokens: maxTokens,
+      temperature: 0.1,
+    };
+
+    try {
+      const config = await storage.getConfig();
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`,
+          "HTTP-Referer": config.siteUrl || "https://agentnami.com",
+          "X-Title": config.siteName || "Nami Agent",
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text();
+        return `Error: Web search failed (${response.status}): ${errBody}`;
+      }
+
+      const data = await response.json() as any;
+      const content = data.choices?.[0]?.message?.content;
+      if (!content) return "Error: No search results returned.";
+
+      const tokens = data.usage?.total_tokens || 0;
+      log(`Tool web_search: "${query.substring(0, 50)}" -> ${content.length} chars, ${tokens} tokens`, "tools");
+
+      return content.length > 8000
+        ? content.substring(0, 8000) + "\n... (truncated)"
+        : content;
+    } catch (err: any) {
+      return `Error performing web search: ${err.message}`;
+    }
+  },
+};
+
 const createSwarmTool: NamiTool = {
   name: "create_swarm",
   description: "Create a new swarm (workflow) with an autonomous SwarmQueen. The queen will independently manage the swarm's objective by spawning agents, delegating tasks, monitoring progress, and reviewing results before completing. Pass a clear goal and objective - the queen cannot change her primary objective once set.",
@@ -794,7 +877,7 @@ const manageSwarmTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool];
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool];
 
 export function getTools(): NamiTool[] {
   return allTools;

@@ -1,0 +1,310 @@
+Here's a complete breakdown of all the custom tools and integrations we built, with everything you need to replicate them in your new Replit app:
+
+Full Export Guide: OpenClaw Custom Tools & Integrations
+1. Ennube MCP Plugin (CRM Tools - Salesforce/HubSpot)
+This is a custom OpenClaw plugin that connects to your Ennube AI MCP server over HTTP. It provides 6 tools: call_workflow_data_steward, call_workflow_prospect_finder, get_data, get_fields, get_metadata, get_describe.
+
+How to set it up:
+
+Create a folder for the plugin inside ~/.openclaw/extensions/mcp-integration/
+Put this index.js file in it:
+const http = require('http');
+const https = require('https');
+const ENNUBE_TOOLS = [
+  {
+    name: 'call_workflow_data_steward',
+    description: 'Enriches Account and Contact data in Salesforce. ALWAYS ask the user for permission before calling.',
+    inputSchema: { type: 'object', properties: { limit: { type: 'string', description: 'Optional limit' } } }
+  },
+  {
+    name: 'call_workflow_prospect_finder',
+    description: 'Finds new prospects. ALWAYS ask the user for permission before calling.',
+    inputSchema: { type: 'object', properties: { limit: { type: 'string', description: 'Optional limit' } } }
+  },
+  {
+    name: 'get_data',
+    description: 'Generate and execute intelligent queries based on natural language descriptions. Supports both Salesforce (SOQL) and HubSpot (Search API).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        platform: { type: 'string', description: '"sfdc" or "hubspot". Default: "sfdc"' },
+        sobjects: { type: 'string', description: 'For SFDC: primary object types (e.g., Account, Contact, Opportunity)' },
+        objectType: { type: 'string', description: 'For HubSpot: object type to search' },
+        description: { type: 'string', description: 'Required. Natural language description of what data you want' },
+        multiQuery: { type: 'boolean', description: '(SFDC only) If true, generate multiple queries' },
+        limit: { type: 'number', description: '(HubSpot only) Max records (max 200)' }
+      },
+      required: ['description']
+    }
+  },
+  {
+    name: 'get_fields',
+    description: 'Introspect an object and return all valid fields.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        platform: { type: 'string', description: '"sfdc" or "hubspot". Default: "sfdc"' },
+        sobjectType: { type: 'string', description: 'For SFDC: the sObject type' },
+        objectType: { type: 'string', description: 'For HubSpot: the object type' },
+        limit: { type: 'number', description: '(SFDC only) Max fields to return' },
+        includeHidden: { type: 'boolean', description: '(HubSpot only) Include hidden fields' }
+      }
+    }
+  },
+  {
+    name: 'get_metadata',
+    description: 'Access metadata/schema for SFDC or HubSpot.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        platform: { type: 'string', description: '"sfdc" or "hubspot". Default: "sfdc"' },
+        operation: { type: 'string', description: '(SFDC only) "describe", "list", or "read"' },
+        type: { type: 'string', description: '(SFDC only) Metadata type (e.g., "ApexClass", "CustomObject")' },
+        names: { type: 'string', description: '(SFDC only) Specific component names to read' },
+        folder: { type: 'string', description: '(SFDC only) Folder name' },
+        asOfVersion: { type: 'string', description: '(SFDC only) API version (e.g., "63.0")' },
+        objectTypes: { type: 'string', description: '(HubSpot only) Comma-separated object types' }
+      }
+    }
+  },
+  {
+    name: 'get_describe',
+    description: 'Retrieve object metadata including fields, relationships, and constraints.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        platform: { type: 'string', description: '"sfdc" or "hubspot". Default: "sfdc"' },
+        sobjects: { type: 'string', description: '(SFDC only) Object types to describe' }
+      }
+    }
+  }
+];
+module.exports = function mcpPlugin(api) {
+  const config = api.pluginConfig || {};
+  const servers = config.servers || {};
+  for (const [serverName, serverCfg] of Object.entries(servers)) {
+    const tools = serverName === 'ennube-ai' ? ENNUBE_TOOLS : [];
+    for (const tool of tools) {
+      api.registerTool({
+        name: tool.name,
+        description: tool.description,
+        parameters: tool.inputSchema,
+        async execute(_id, params) {
+          return await callTool(serverCfg, tool.name, params);
+        }
+      });
+    }
+    api.logger.info(`[MCP] Registered ${tools.length} tools from ${serverName}`);
+  }
+};
+async function callTool(serverCfg, toolName, args) {
+  const body = JSON.stringify({
+    jsonrpc: '2.0', id: Date.now(),
+    method: 'tools/call',
+    params: { name: toolName, arguments: args || {} }
+  });
+  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream' };
+  if (serverCfg.headers) {
+    for (const [k, v] of Object.entries(serverCfg.headers)) {
+      if (k.toLowerCase() !== 'content-type' && k.toLowerCase() !== 'accept') headers[k] = v;
+    }
+  }
+  const result = await httpPost(serverCfg.url, body, headers);
+  const parsed = parseResponse(result);
+  const content = parsed.result?.content || parsed.result || parsed;
+  return Array.isArray(content) ? { content } : { content: [{ type: 'text', text: JSON.stringify(content, null, 2) }] };
+}
+function parseResponse(raw) {
+  for (const line of raw.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('data:')) {
+      const data = trimmed.slice(5).trim();
+      if (data && data !== '[DONE]') { try { return JSON.parse(data); } catch(e) {} }
+    }
+  }
+  try { return JSON.parse(raw); } catch(e) {}
+  return { error: 'Failed to parse response' };
+}
+function httpPost(url, body, headers) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const mod = parsed.protocol === 'https:' ? https : http;
+    const req = mod.request({
+      hostname: parsed.hostname, port: parsed.port,
+      path: parsed.pathname + parsed.search,
+      method: 'POST',
+      headers: { ...headers, 'Content-Length': Buffer.byteLength(body) }
+    }, (res) => { let data = ''; res.on('data', chunk => data += chunk); res.on('end', () => resolve(data)); });
+    req.on('error', reject);
+    req.setTimeout(30000, () => { req.destroy(); reject(new Error('timeout')); });
+    req.write(body); req.end();
+  });
+}
+Add to openclaw.json:
+{
+  "plugins": {
+    "load": { "paths": ["/home/runner/.openclaw/extensions/mcp-integration"] },
+    "entries": {
+      "mcp-integration": {
+        "config": {
+          "servers": {
+            "ennube-ai": {
+              "url": "https://dev.ennube.ai/api/tools/mcp",
+              "transport": "http",
+              "headers": { "Authorization": "Bearer YOUR_ENNUBE_API_KEY" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+Store ENNUBE_API_KEY in Replit Secrets and inject it on startup.
+2. Gmail / Google Workspace (gog CLI)
+This uses an open-source CLI called gog (https://gogcli.sh).
+
+Setup steps:
+
+Download the binary on startup:
+const { execSync } = require('child_process');
+const fs = require('fs');
+const gogPath = '/home/runner/.local/bin/gog';
+if (!fs.existsSync(gogPath)) {
+  execSync('curl -fsSL https://gogcli.sh/install | bash', { stdio: 'inherit' });
+}
+Set environment variables (from Replit Secrets):
+GOG_CLIENT_ID=your_google_oauth_client_id
+GOG_CLIENT_SECRET=your_google_oauth_client_secret
+First-time auth (run manually in Shell once):
+gog auth credentials /path/to/client_secret.json
+gog auth add you@gmail.com --services gmail,calendar,drive,contacts
+Create a skill file at ~/.openclaw/workspace/skills/gog/SKILL.md with the commands the agent can use (see the SKILL.md content above).
+
+Google Cloud prerequisite: You need a Google Cloud project with OAuth credentials (Desktop app type) and the Gmail, Calendar, Drive, and People APIs enabled.
+
+3. Web Search (Perplexity via OpenRouter)
+This one is the easiest — it's built into OpenClaw.
+
+Config in openclaw.json:
+
+{
+  "tools": {
+    "web": {
+      "search": {
+        "provider": "perplexity",
+        "enabled": true
+      }
+    }
+  }
+}
+It uses Perplexity through OpenRouter, so all you need is your OPENROUTER_API_KEY in the config's env section:
+
+{
+  "env": {
+    "OPENROUTER_API_KEY": "your_key_here"
+  }
+}
+4. Headless Chromium Browser
+Config in openclaw.json:
+
+{
+  "browser": {
+    "enabled": true,
+    "executablePath": "/nix/store/.../bin/chromium",
+    "noSandbox": true,
+    "headless": true
+  }
+}
+Important for Replit: You need to install Chromium via Nix and auto-detect its path on startup:
+
+const { execSync } = require('child_process');
+try {
+  const chromiumPath = execSync('which chromium 2>/dev/null || which chromium-browser 2>/dev/null')
+    .toString().trim();
+  // Inject chromiumPath into your config's browser.executablePath
+} catch (e) {
+  console.warn('Chromium not found');
+}
+Install Chromium through Nix packages (not apt).
+
+5. Database Persistence Module
+The db-persistence.js file saves/restores everything to PostgreSQL. Tables it creates:
+
+Table	Purpose
+workspace_files	AI identity files (SOUL.md, IDENTITY.md, etc.)
+chat_sessions	Session metadata
+chat_messages	Individual chat messages (JSONL lines)
+canvas_files	AI canvas/code project files (up to 5MB, supports binary)
+device_files	Paired device data (Slack pairing codes, etc.)
+Copy the full db-persistence.js file (320 lines above) to your new project. It requires the pg npm package and DATABASE_URL env var.
+
+Usage pattern in your startup script:
+
+const dbPersistence = require('./db-persistence');
+// On startup:
+const result = await dbPersistence.restoreAllFromDb();
+// Periodic save (every 60s):
+setInterval(() => dbPersistence.saveAllToDb(), 60000);
+6. WebSocket Payload Patch
+OpenClaw's default WebSocket limit is 512KB. For handling large files/conversations, we patched it to 50MB.
+
+Copy patch-payload.js and add to package.json:
+
+{
+  "scripts": {
+    "postinstall": "node patch-payload.js"
+  }
+}
+7. Key Config Settings Worth Noting
+Agent model routing through OpenRouter (avoids Google rate limits):
+
+{
+  "agents": {
+    "defaults": {
+      "model": { "primary": "openrouter/google/gemini-2.5-flash-lite" },
+      "maxConcurrent": 4,
+      "subagents": { "maxConcurrent": 8, "model": "openrouter/google/gemini-2.5-flash-lite" },
+      "heartbeat": { "every": "30m", "model": "openrouter/google/gemini-2.5-flash-lite", "activeHours": { "start": "07:00", "end": "23:00" } }
+    }
+  }
+}
+Session persistence (30-day idle timeout, prevents daily session rotation):
+
+{ "session": { "idleMinutes": 43200 } }
+Slack channel config:
+
+{
+  "channels": {
+    "slack": {
+      "mode": "socket",
+      "botToken": "xoxb-...",
+      "appToken": "xapp-...",
+      "userTokenReadOnly": true,
+      "groupPolicy": "allowlist"
+    }
+  }
+}
+8. Critical Lessons for Your New Autonomous Agent
+Sub-agent file persistence: Sub-agents' write tool saves to a session-scoped canvas, NOT the shared workspace. If you want sub-agents to produce output files (CSVs, reports), they MUST use exec (shell commands) to write to ~/.openclaw/workspace/ with absolute paths. Document this prominently in your AGENTS.md.
+
+Headless mode is required on Replit — there's no display server. Always enforce headless: true in browser config.
+
+Use openrouter/ prefix for models to route through OpenRouter rather than direct Google API — avoids rate limiting.
+
+Config safety: Always back up openclaw.json before the gateway starts and periodically. The AI agent can write invalid JSON to it, which would prevent startup. Auto-restore from backup if config is corrupted.
+
+Deploy as VM (always-on), not autoscale — the gateway needs to stay running for Slack, heartbeats, etc.
+
+Auth proxy pattern: Run the gateway on an internal port (18789 on loopback) and proxy through port 5000 with auto-injected auth tokens. This keeps the gateway token secret from the browser.
+
+Secrets You'll Need in the New App
+Secret	Purpose
+OPENROUTER_API_KEY	LLM access for all models
+OPENCLAW_GATEWAY_TOKEN	Auth between proxy and gateway
+ENNUBE_API_KEY	Ennube MCP server access
+SLACK_BOT_TOKEN	Slack bot integration
+SLACK_APP_TOKEN	Slack socket mode
+GOG_CLIENT_ID	Google OAuth for Gmail/Calendar
+GOG_CLIENT_SECRET	Google OAuth secret
+APP_USERNAME / APP_PASSWORD	Web interface login
+All of these go into Replit Secrets, and your startup script injects them into the OpenClaw config on boot.
