@@ -1,8 +1,31 @@
 import { storage } from "./storage";
-import { chatCompletion, type ChatMessage as OpenRouterMessage } from "./openrouter";
+import { chatCompletion, calculateCost, fetchModelPricing, type ChatMessage as OpenRouterMessage, type ChatResult } from "./openrouter";
 import { log } from "./index";
 import { engineMind } from "./engine-mind";
-import type { Agent, Swarm, SwarmSchedule, NamiEvent, EngineState } from "@shared/schema";
+import type { Agent, Swarm, SwarmSchedule, NamiEvent, EngineState, InsertUsageRecord } from "@shared/schema";
+
+async function recordUsage(
+  result: ChatResult,
+  source: InsertUsageRecord["source"],
+  swarmId?: string | null,
+  agentId?: string | null,
+): Promise<void> {
+  try {
+    const cost = calculateCost(result.model, result.promptTokens, result.completionTokens);
+    await storage.addUsageRecord({
+      model: result.model,
+      promptTokens: result.promptTokens,
+      completionTokens: result.completionTokens,
+      totalTokens: result.tokensUsed,
+      cost,
+      source,
+      swarmId: swarmId || null,
+      agentId: agentId || null,
+    });
+  } catch (e) {
+    log(`Failed to record usage: ${e}`, "engine");
+  }
+}
 
 type EventCallback = (event: NamiEvent) => void;
 
@@ -169,6 +192,7 @@ export function stopScheduleChecker() {
 export async function bootEngine(): Promise<void> {
   const engineState = await storage.getEngineState();
   log(`Engine boot: state=${engineState}`, "engine");
+  fetchModelPricing().catch(() => {});
 
   if (engineState === "running") {
     await eventBus.emit("system", { message: "Engine auto-booted (always-on)" }, "nami");
@@ -344,8 +368,10 @@ async function executeHeartbeat(instruction: string) {
       const engineState = await storage.getEngineState();
       if (engineState !== "running") break;
 
-      const { content, tokensUsed, toolCalls } = await chatCompletion(conversationHistory, { model: config.defaultModel, useTools: true });
+      const hbResult = await chatCompletion(conversationHistory, { model: config.defaultModel, useTools: true });
+      const { content, tokensUsed, toolCalls } = hbResult;
       totalTokens += tokensUsed;
+      await recordUsage(hbResult, "heartbeat");
 
       const toolSummary = toolCalls?.length ? ` [tools: ${toolCalls.map((t) => t.name).join(", ")}]` : "";
       const actionSummary = (content.length > 150 ? content.substring(0, 150) + "..." : content) + toolSummary;
@@ -371,6 +397,7 @@ async function executeHeartbeat(instruction: string) {
       const summaryResult = await chatCompletion(summaryMessages, { model: config.defaultModel, maxTokens: 150 });
       summary = summaryResult.content;
       totalTokens += summaryResult.tokensUsed;
+      await recordUsage(summaryResult, "heartbeat");
     } catch {
       summary = details.map(d => d.result).join(" | ");
     }
@@ -658,7 +685,9 @@ export async function runAgentInference(agentId: string, userMessage: string): P
     ...history.map((m) => ({ role: m.role, content: m.content })),
   ];
 
-  const { content, tokensUsed } = await chatCompletion(messages, { model: agent.model });
+  const agentResult = await chatCompletion(messages, { model: agent.model });
+  const { content, tokensUsed } = agentResult;
+  await recordUsage(agentResult, "agent", agent.swarmId, agentId);
 
   await storage.addMessage({
     fromAgentId: agentId,
@@ -758,7 +787,9 @@ export async function chatWithNami(userMessage: string): Promise<{ content: stri
   ];
 
   const config = await storage.getConfig();
-  const { content, tokensUsed, toolCalls } = await chatCompletion(messages, { model: config.defaultModel, useTools: true });
+  const chatResult = await chatCompletion(messages, { model: config.defaultModel, useTools: true });
+  const { content, tokensUsed, toolCalls } = chatResult;
+  await recordUsage(chatResult, "chat");
 
   await storage.addChatMessage({
     role: "assistant",
@@ -955,10 +986,12 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
 
     try {
       const queenModel = config.swarmQueenModel || config.defaultModel;
-      const { content, tokensUsed } = await chatCompletion(conversationHistory, {
+      const queenResult = await chatCompletion(conversationHistory, {
         model: queenModel,
         maxTokens: 2048,
       });
+      const { content, tokensUsed } = queenResult;
+      await recordUsage(queenResult, "swarm", swarmId, queen.id);
 
       await storage.updateAgent(queen.id, {
         tokensUsed: queen.tokensUsed + tokensUsed,

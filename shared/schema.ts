@@ -276,5 +276,39 @@ export const eventSchema = z.object({
 });
 export type NamiEvent = z.infer<typeof eventSchema>;
 
+export const usageRecordSchema = z.object({
+  id: z.string(),
+  timestamp: z.string(),
+  model: z.string(),
+  promptTokens: z.number(),
+  completionTokens: z.number(),
+  totalTokens: z.number(),
+  cost: z.number(),
+  source: z.enum(["chat", "heartbeat", "swarm", "agent", "engine_mind"]),
+  swarmId: z.string().nullable(),
+  agentId: z.string().nullable(),
+});
+export type UsageRecord = z.infer<typeof usageRecordSchema>;
+
+export const insertUsageRecordSchema = usageRecordSchema.omit({ id: true, timestamp: true });
+export type InsertUsageRecord = z.infer<typeof insertUsageRecordSchema>;
+
+export const usageBucketSchema = z.object({
+  cost: z.number(),
+  tokens: z.number(),
+  count: z.number(),
+  name: z.string().optional(),
+});
+
+export const usageSummarySchema = z.object({
+  totalCost: z.number(),
+  totalTokens: z.number(),
+  totalCalls: z.number(),
+  bySource: z.record(usageBucketSchema),
+  byModel: z.record(usageBucketSchema),
+  bySwarm: z.record(usageBucketSchema),
+});
+export type UsageSummary = z.infer<typeof usageSummarySchema>;
+
 export type User = { id: string; username: string; password: string };
 export type InsertUser = { username: string; password: string };

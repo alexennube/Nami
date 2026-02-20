@@ -45,10 +45,58 @@ export async function createOpenRouterClient(): Promise<OpenAI> {
   });
 }
 
+export interface ChatResult {
+  content: string;
+  tokensUsed: number;
+  promptTokens: number;
+  completionTokens: number;
+  model: string;
+  toolCalls?: Array<{ name: string; args: any; result: string }>;
+}
+
+let modelPricingCache: Map<string, { prompt: number; completion: number }> = new Map();
+let pricingLastFetched = 0;
+const PRICING_TTL = 6 * 60 * 60 * 1000;
+
+export async function fetchModelPricing(): Promise<Map<string, { prompt: number; completion: number }>> {
+  if (modelPricingCache.size > 0 && Date.now() - pricingLastFetched < PRICING_TTL) {
+    return modelPricingCache;
+  }
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/models");
+    const data = await res.json();
+    const cache = new Map<string, { prompt: number; completion: number }>();
+    for (const m of data.data || []) {
+      if (m.id && m.pricing) {
+        cache.set(m.id, {
+          prompt: parseFloat(m.pricing.prompt) || 0,
+          completion: parseFloat(m.pricing.completion) || 0,
+        });
+      }
+    }
+    modelPricingCache = cache;
+    pricingLastFetched = Date.now();
+    log(`Fetched pricing for ${cache.size} models`, "openrouter");
+    return cache;
+  } catch (err: any) {
+    log(`Failed to fetch model pricing: ${err.message}`, "openrouter");
+    return modelPricingCache;
+  }
+}
+
+export function calculateCost(model: string, promptTokens: number, completionTokens: number): number {
+  if (modelPricingCache.size === 0) {
+    fetchModelPricing().catch(() => {});
+  }
+  const pricing = modelPricingCache.get(model);
+  if (!pricing) return 0;
+  return (promptTokens * pricing.prompt) + (completionTokens * pricing.completion);
+}
+
 export async function chatCompletion(
   messages: ChatMessage[],
   options: ChatOptions = {}
-): Promise<{ content: string; tokensUsed: number; toolCalls?: Array<{ name: string; args: any; result: string }> }> {
+): Promise<ChatResult> {
   const config = await storage.getConfig();
   const client = await createOpenRouterClient();
 
@@ -66,6 +114,8 @@ export async function chatCompletion(
 
   const allToolCalls: Array<{ name: string; args: any; result: string }> = [];
   let totalTokens = 0;
+  let totalPromptTokens = 0;
+  let totalCompletionTokens = 0;
   let finalContent = "";
 
   const conversationMessages: any[] = [...messages];
@@ -86,6 +136,8 @@ export async function chatCompletion(
 
       const response = await client.chat.completions.create(requestParams);
       totalTokens += response.usage?.total_tokens || 0;
+      totalPromptTokens += response.usage?.prompt_tokens || 0;
+      totalCompletionTokens += response.usage?.completion_tokens || 0;
 
       const choice = response.choices[0];
       if (!choice) break;
@@ -134,11 +186,14 @@ export async function chatCompletion(
       finalContent = `Executed ${allToolCalls.length} tool call(s): ${allToolCalls.map((tc) => tc.name).join(", ")}.`;
     }
 
-    log(`OpenRouter response: ${totalTokens} tokens, ${allToolCalls.length} tool calls`, "openrouter");
+    log(`OpenRouter response: ${totalTokens} tokens (${totalPromptTokens}p/${totalCompletionTokens}c), ${allToolCalls.length} tool calls`, "openrouter");
 
     return {
       content: finalContent,
       tokensUsed: totalTokens,
+      promptTokens: totalPromptTokens,
+      completionTokens: totalCompletionTokens,
+      model,
       toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
   } catch (error: any) {

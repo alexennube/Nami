@@ -32,6 +32,7 @@ import {
   ChevronRight,
   Waypoints,
   Cpu,
+  DollarSign,
 } from "lucide-react";
 import { useState } from "react";
 import type { EngineStatus, PinnedChat } from "@shared/schema";
@@ -302,6 +303,14 @@ export function AppSidebar() {
                   <Link href="/tools" data-testid="link-tools">
                     <Wrench className="w-4 h-4" />
                     <span>Tools</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/usage"} className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
+                  <Link href="/usage" data-testid="link-usage">
+                    <DollarSign className="w-4 h-4" />
+                    <span>Usage</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

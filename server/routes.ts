@@ -339,6 +339,53 @@ export async function registerRoutes(
     res.json(events);
   });
 
+  app.get("/api/usage", async (req, res) => {
+    const swarmId = req.query.swarmId as string | undefined;
+    const records = await storage.getUsageRecords(swarmId);
+    res.json(records);
+  });
+
+  app.get("/api/usage/summary", async (_req, res) => {
+    const records = await storage.getUsageRecords();
+    const totalCost = records.reduce((sum, r) => sum + r.cost, 0);
+    const totalTokens = records.reduce((sum, r) => sum + r.totalTokens, 0);
+    const bySource: Record<string, { cost: number; tokens: number; count: number }> = {};
+    const byModel: Record<string, { cost: number; tokens: number; count: number }> = {};
+    const bySwarm: Record<string, { cost: number; tokens: number; count: number; name?: string }> = {};
+
+    for (const r of records) {
+      if (!bySource[r.source]) bySource[r.source] = { cost: 0, tokens: 0, count: 0 };
+      bySource[r.source].cost += r.cost;
+      bySource[r.source].tokens += r.totalTokens;
+      bySource[r.source].count++;
+
+      if (!byModel[r.model]) byModel[r.model] = { cost: 0, tokens: 0, count: 0 };
+      byModel[r.model].cost += r.cost;
+      byModel[r.model].tokens += r.totalTokens;
+      byModel[r.model].count++;
+
+      if (r.swarmId) {
+        if (!bySwarm[r.swarmId]) bySwarm[r.swarmId] = { cost: 0, tokens: 0, count: 0 };
+        bySwarm[r.swarmId].cost += r.cost;
+        bySwarm[r.swarmId].tokens += r.totalTokens;
+        bySwarm[r.swarmId].count++;
+      }
+    }
+
+    const swarms = await storage.getSwarms();
+    for (const [id, entry] of Object.entries(bySwarm)) {
+      const swarm = swarms.find((s) => s.id === id);
+      if (swarm) entry.name = swarm.name;
+    }
+
+    res.json({ totalCost, totalTokens, totalCalls: records.length, bySource, byModel, bySwarm });
+  });
+
+  app.delete("/api/usage", async (_req, res) => {
+    await storage.clearUsageRecords();
+    res.json({ success: true });
+  });
+
   app.get("/api/config", async (_req, res) => {
     const config = await storage.getConfig();
     const safeConfig = { ...config, openRouterApiKey: config.openRouterApiKey ? "sk-or-v1-****" : "" };

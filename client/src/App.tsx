@@ -20,6 +20,7 @@ import SkillsPage from "@/pages/skills";
 import Settings from "@/pages/settings";
 import EngineMindPage from "@/pages/engine-mind";
 import SwarmDetail from "@/pages/swarm-detail";
+import UsagePage from "@/pages/usage";
 
 function Router() {
   return (
@@ -35,6 +36,7 @@ function Router() {
       <Route path="/swarms" component={Swarms} />
       <Route path="/swarms/:id" component={SwarmDetail} />
       <Route path="/tools" component={Tools} />
+      <Route path="/usage" component={UsagePage} />
       <Route path="/activity" component={Activity} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
