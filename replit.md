@@ -31,7 +31,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `server/routes.ts` - Express API routes + WebSocket setup
 - `server/storage.ts` - In-memory storage layer with file-based config persistence
 - `client/src/App.tsx` - Main app with sidebar layout, chat as default view
-- `client/src/pages/` - Chat, Thoughts, Memory, Heartbeat, Spawns, Swarms, Tools, Activity, Settings
+- `client/src/pages/` - Chat, Thoughts, Memory, Heartbeat, Skills, Spawns, Swarms, Tools, Activity, Settings
 - `client/src/components/app-sidebar.tsx` - Navigation sidebar with engine controls
 - `client/src/lib/websocket.ts` - WebSocket client for real-time events
 
@@ -42,6 +42,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `POST /api/swarms/:id/run` - Execute swarm workflow steps
 - `GET/POST/DELETE /api/thoughts` - Nami's internal reasoning log
 - `GET/POST/DELETE /api/memories` - Stored context and knowledge
+- `GET/POST/PUT/DELETE /api/skills` - Skill documents (markdown reference material)
 - `GET/PUT /api/heartbeat` - Heartbeat configuration
 - `POST /api/engine/start|pause|stop` - Engine state control
 - `GET /api/engine/status` - Engine status (state, heartbeat count, model)
@@ -53,6 +54,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `GET/PUT /api/tools/permissions` - Tool permission configuration
 
 ## Recent Changes
+- 2026-02-20: Added Skills page under Engine Mind (markdown skill documents with CRUD + persistence)
 - 2026-02-20: Added web_browse (Chromium), google_workspace (gogCLI), ennube_mcp (Ennube AI MCP) tools
 - 2026-02-20: Chat history, thoughts, memories now persist to disk (.nami-data/) across restarts
 - 2026-02-20: Heartbeat now always calls LLM; SLEEP no longer floods chat history

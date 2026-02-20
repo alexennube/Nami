@@ -20,6 +20,7 @@ import {
   Brain,
   BookOpen,
   Heart,
+  Zap,
   Bot,
   Network,
   Wrench,
@@ -38,7 +39,7 @@ export function AppSidebar() {
   const [location] = useLocation();
   const [chatsOpen, setChatsOpen] = useState(true);
   const [mindOpen, setMindOpen] = useState(false);
-  const isMindPage = location === "/thoughts" || location === "/memory" || location === "/heartbeat";
+  const isMindPage = location === "/thoughts" || location === "/memory" || location === "/heartbeat" || location === "/skills";
 
   const { data: engineStatus } = useQuery<EngineStatus>({
     queryKey: ["/api/engine/status"],
@@ -227,6 +228,14 @@ export function AppSidebar() {
                       <Link href="/heartbeat" data-testid="link-heartbeat">
                         <Heart className="w-4 h-4" />
                         <span>Heartbeat</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/skills"} className="pl-8 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
+                      <Link href="/skills" data-testid="link-skills">
+                        <Zap className="w-4 h-4" />
+                        <span>Skills</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

@@ -1,4 +1,4 @@
-import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, Thought, Memory, HeartbeatConfig, HeartbeatLog, EngineState } from "@shared/schema";
+import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, Thought, Memory, Skill, HeartbeatConfig, HeartbeatLog, EngineState } from "@shared/schema";
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -10,6 +10,7 @@ const ENGINE_STATE_FILE = path.join(PERSIST_DIR, "engine-state.json");
 const CHAT_HISTORY_FILE = path.join(PERSIST_DIR, "chat-history.json");
 const THOUGHTS_FILE = path.join(PERSIST_DIR, "thoughts.json");
 const MEMORIES_FILE = path.join(PERSIST_DIR, "memories.json");
+const SKILLS_FILE = path.join(PERSIST_DIR, "skills.json");
 
 function ensurePersistDir() {
   if (!fs.existsSync(PERSIST_DIR)) {
@@ -82,6 +83,12 @@ export interface IStorage {
   updateMemory(id: string, updates: Partial<Memory>): Promise<Memory | undefined>;
   deleteMemory(id: string): Promise<boolean>;
 
+  getSkills(): Promise<Skill[]>;
+  getSkill(id: string): Promise<Skill | undefined>;
+  addSkill(skill: Omit<Skill, "id" | "createdAt" | "updatedAt">): Promise<Skill>;
+  updateSkill(id: string, updates: Partial<Skill>): Promise<Skill | undefined>;
+  deleteSkill(id: string): Promise<boolean>;
+
   getHeartbeatConfig(): Promise<HeartbeatConfig>;
   updateHeartbeatConfig(updates: Partial<HeartbeatConfig>): Promise<HeartbeatConfig>;
 
@@ -100,6 +107,7 @@ export class MemStorage implements IStorage {
   private chatHistory: ChatMessage[] = [];
   private thoughts: Thought[] = [];
   private memories: Map<string, Memory> = new Map();
+  private skills: Map<string, Skill> = new Map();
   private heartbeatLogs: HeartbeatLog[] = [];
   private heartbeatConfig: HeartbeatConfig;
   private engineState: EngineState;
@@ -143,7 +151,12 @@ export class MemStorage implements IStorage {
       this.memories.set(mem.id, mem);
     }
 
-    console.log(`[storage] Loaded from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState}, chat: ${this.chatHistory.length} msgs, thoughts: ${this.thoughts.length}, memories: ${this.memories.size})`);
+    const savedSkills = loadJson<Skill[]>(SKILLS_FILE, []);
+    for (const skill of savedSkills) {
+      this.skills.set(skill.id, skill);
+    }
+
+    console.log(`[storage] Loaded from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState}, chat: ${this.chatHistory.length} msgs, thoughts: ${this.thoughts.length}, memories: ${this.memories.size}, skills: ${this.skills.size})`);
   }
 
   async getAgents(): Promise<Agent[]> {
@@ -345,6 +358,42 @@ export class MemStorage implements IStorage {
 
   private persistMemories() {
     saveJson(MEMORIES_FILE, Array.from(this.memories.values()));
+  }
+
+  async getSkills(): Promise<Skill[]> {
+    return Array.from(this.skills.values()).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  async getSkill(id: string): Promise<Skill | undefined> {
+    return this.skills.get(id);
+  }
+
+  async addSkill(data: Omit<Skill, "id" | "createdAt" | "updatedAt">): Promise<Skill> {
+    const id = randomUUID();
+    const now = new Date().toISOString();
+    const skill: Skill = { ...data, id, createdAt: now, updatedAt: now };
+    this.skills.set(id, skill);
+    this.persistSkills();
+    return skill;
+  }
+
+  async updateSkill(id: string, updates: Partial<Skill>): Promise<Skill | undefined> {
+    const skill = this.skills.get(id);
+    if (!skill) return undefined;
+    const updated = { ...skill, ...updates, updatedAt: new Date().toISOString() };
+    this.skills.set(id, updated);
+    this.persistSkills();
+    return updated;
+  }
+
+  async deleteSkill(id: string): Promise<boolean> {
+    const result = this.skills.delete(id);
+    this.persistSkills();
+    return result;
+  }
+
+  private persistSkills() {
+    saveJson(SKILLS_FILE, Array.from(this.skills.values()));
   }
 
   async getHeartbeatConfig(): Promise<HeartbeatConfig> {

@@ -16,6 +16,7 @@ import Spawns from "@/pages/spawns";
 import Swarms from "@/pages/swarms";
 import Tools from "@/pages/tools";
 import Activity from "@/pages/activity";
+import SkillsPage from "@/pages/skills";
 import Settings from "@/pages/settings";
 
 function Router() {
@@ -26,6 +27,7 @@ function Router() {
       <Route path="/thoughts" component={Thoughts} />
       <Route path="/memory" component={MemoryPage} />
       <Route path="/heartbeat" component={Heartbeat} />
+      <Route path="/skills" component={SkillsPage} />
       <Route path="/spawns" component={Spawns} />
       <Route path="/swarms" component={Swarms} />
       <Route path="/tools" component={Tools} />

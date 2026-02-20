@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
-import { insertAgentSchema, insertSwarmSchema } from "@shared/schema";
+import { insertAgentSchema, insertSwarmSchema, skillSchema } from "@shared/schema";
 import { log } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
 
@@ -243,6 +243,46 @@ export async function registerRoutes(
   app.delete("/api/memories/:id", async (req, res) => {
     const deleted = await storage.deleteMemory(req.params.id);
     if (!deleted) return res.status(404).json({ message: "Memory not found" });
+    res.json({ success: true });
+  });
+
+  app.get("/api/skills", async (_req, res) => {
+    const skills = await storage.getSkills();
+    res.json(skills);
+  });
+
+  app.get("/api/skills/:id", async (req, res) => {
+    const skill = await storage.getSkill(req.params.id);
+    if (!skill) return res.status(404).json({ message: "Skill not found" });
+    res.json(skill);
+  });
+
+  const insertSkillSchema = skillSchema.pick({ name: true, content: true, category: true });
+
+  app.post("/api/skills", async (req, res) => {
+    try {
+      const data = insertSkillSchema.parse(req.body);
+      const skill = await storage.addSkill(data);
+      res.status(201).json(skill);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/skills/:id", async (req, res) => {
+    try {
+      const updates = insertSkillSchema.partial().parse(req.body);
+      const skill = await storage.updateSkill(req.params.id, updates);
+      if (!skill) return res.status(404).json({ message: "Skill not found" });
+      res.json(skill);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/skills/:id", async (req, res) => {
+    const deleted = await storage.deleteSkill(req.params.id);
+    if (!deleted) return res.status(404).json({ message: "Skill not found" });
     res.json({ success: true });
   });
 

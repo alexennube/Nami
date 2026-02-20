@@ -123,6 +123,16 @@ export const memorySchema = z.object({
 });
 export type Memory = z.infer<typeof memorySchema>;
 
+export const skillSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  content: z.string(),
+  category: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type Skill = z.infer<typeof skillSchema>;
+
 export const heartbeatConfigSchema = z.object({
   enabled: z.boolean().default(false),
   intervalSeconds: z.number().default(30),
