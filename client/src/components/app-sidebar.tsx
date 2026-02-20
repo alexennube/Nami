@@ -274,7 +274,7 @@ export function AppSidebar() {
                     <SidebarMenuButton asChild data-active={location === "/engine-mind"} className="pl-8 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
                       <Link href="/engine-mind" data-testid="link-engine-mind">
                         <Cpu className="w-4 h-4" />
-                        <span>Pi Session</span>
+                        <span>Soul</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

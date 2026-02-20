@@ -100,7 +100,7 @@ export default function EngineMindPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Cpu className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-bold" data-testid="text-page-title">Pi Session</h1>
+          <h1 className="text-lg font-bold" data-testid="text-page-title">Soul</h1>
         </div>
         <Badge variant={status?.initialized ? "default" : "secondary"} data-testid="badge-mind-status">
           {status?.initialized ? "Active" : "Inactive"}
@@ -111,7 +111,7 @@ export default function EngineMindPage() {
         <CardHeader>
           <CardTitle className="text-sm">Session Status</CardTitle>
           <CardDescription className="text-[11px]">
-            Pi framework session for self-healing, spawn validation, and auto-compaction.
+            Soul session for self-healing, spawn validation, and auto-compaction.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
