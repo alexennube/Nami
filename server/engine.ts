@@ -169,39 +169,23 @@ async function executeHeartbeat(instruction: string) {
     type: "observation",
   });
 
-  if (activeAgents.length === 0 && activeSwarms.length === 0) {
-    await storage.addChatMessage({
-      role: "assistant",
-      content: "< SLEEP >",
-      agentId: "nami",
-      agentName: "Nami",
-      tokensUsed: 0,
-      autonomous: true,
-    });
-
-    details.push({ attempt: 1, action: "status_check", result: "No active work. Entering sleep.", tokensUsed: 0 });
-
-    await storage.addHeartbeatLog({
-      beatNumber,
-      status: "sleep",
-      attempts: 1,
-      summary: "No active agents or swarms. System idle.",
-      details,
-      totalTokens: 0,
-      timestamp: new Date().toISOString(),
-      duration: Date.now() - startTime,
-    });
-
-    await eventBus.emit("heartbeat", { status: "sleep", beatNumber, context: systemContext }, "nami");
-    log(`Heartbeat #${beatNumber}: SLEEP (no active work)`, "engine");
-    return;
-  }
+  const recentMessages = await storage.getChatHistory();
+  const lastUserMsg = [...recentMessages].reverse().find((m) => m.role === "user");
+  const hasRecentChat = lastUserMsg && (Date.now() - new Date(lastUserMsg.timestamp || 0).getTime()) < 120000;
+  const hasActiveWork = activeAgents.length > 0 || activeSwarms.length > 0;
 
   const config = await storage.getConfig();
-  const maxAttempts = 3;
+  const maxAttempts = hasActiveWork ? 3 : 1;
+
+  const heartbeatContext = [
+    `Current state: ${systemContext}`,
+    hasRecentChat ? `Recent user activity detected.` : `No recent user messages.`,
+    hasActiveWork ? `Active work in progress - monitor and assist.` : `System is idle - you may proactively inspect your workspace, review your own config, or simply report status.`,
+  ].join("\n");
+
   const conversationHistory: OpenRouterMessage[] = [
-    { role: "system", content: NAMI_SYSTEM_PROMPT + `\n\nYou are in HEARTBEAT mode. You should actively check on all agents and swarms, take actions if needed, and keep working until you've completed your assessment. After each action, indicate if you need to do more with [CONTINUE] or if you're done with [DONE]. Be concise but thorough.` },
-    { role: "user", content: `[HEARTBEAT #${beatNumber}] ${instruction}\n\nCurrent state: ${systemContext}` },
+    { role: "system", content: NAMI_SYSTEM_PROMPT + `\n\nYou are in HEARTBEAT mode. Your job is to autonomously monitor, maintain, and improve. When idle, you can inspect your workspace, review configs, or report a brief status. When there's active work, check on agents and swarms, take actions if needed. After each action, indicate if you need to do more with [CONTINUE] or if you're done with [DONE]. If truly nothing needs attention, respond with just: < SLEEP >. Be concise.` },
+    { role: "user", content: `[HEARTBEAT #${beatNumber}] ${instruction}\n\n${heartbeatContext}` },
   ];
 
   try {
@@ -241,34 +225,53 @@ async function executeHeartbeat(instruction: string) {
     }
 
     const lastResponse = details[details.length - 1]?.result || "";
-    await storage.addChatMessage({
-      role: "assistant",
-      content: lastResponse.replace("[DONE]", "").replace("[CONTINUE]", "").trim(),
-      agentId: "nami",
-      agentName: "Nami",
-      tokensUsed: totalTokens,
-      autonomous: true,
-    });
+    const cleanedResponse = lastResponse.replace("[DONE]", "").replace("[CONTINUE]", "").trim();
+    const isSleep = cleanedResponse === "< SLEEP >" || cleanedResponse.toLowerCase().includes("< sleep >");
 
-    await storage.addHeartbeatLog({
-      beatNumber,
-      status: "active",
-      attempts: details.length,
-      summary,
-      details,
-      totalTokens,
-      timestamp: new Date().toISOString(),
-      duration: Date.now() - startTime,
-    });
+    if (isSleep) {
+      await storage.addHeartbeatLog({
+        beatNumber,
+        status: "sleep",
+        attempts: details.length,
+        summary: summary || "System idle. No action needed.",
+        details,
+        totalTokens,
+        timestamp: new Date().toISOString(),
+        duration: Date.now() - startTime,
+      });
 
-    await storage.addThought({
-      content: `Heartbeat #${beatNumber} complete (${details.length} attempts, ${totalTokens} tokens): ${summary}`,
-      source: "nami",
-      type: "reflection",
-    });
+      await eventBus.emit("heartbeat", { status: "sleep", beatNumber, context: systemContext, tokensUsed: totalTokens }, "nami");
+      log(`Heartbeat #${beatNumber}: SLEEP (${totalTokens} tokens)`, "engine");
+    } else {
+      await storage.addChatMessage({
+        role: "assistant",
+        content: cleanedResponse,
+        agentId: "nami",
+        agentName: "Nami",
+        tokensUsed: totalTokens,
+        autonomous: true,
+      });
 
-    await eventBus.emit("heartbeat", { status: "active", beatNumber, attempts: details.length, tokensUsed: totalTokens, summary }, "nami");
-    log(`Heartbeat #${beatNumber}: ${details.length} attempts, ${totalTokens} tokens`, "engine");
+      await storage.addHeartbeatLog({
+        beatNumber,
+        status: "active",
+        attempts: details.length,
+        summary,
+        details,
+        totalTokens,
+        timestamp: new Date().toISOString(),
+        duration: Date.now() - startTime,
+      });
+
+      await storage.addThought({
+        content: `Heartbeat #${beatNumber} complete (${details.length} attempts, ${totalTokens} tokens): ${summary}`,
+        source: "nami",
+        type: "reflection",
+      });
+
+      await eventBus.emit("heartbeat", { status: "active", beatNumber, attempts: details.length, tokensUsed: totalTokens, summary }, "nami");
+      log(`Heartbeat #${beatNumber}: ${details.length} attempts, ${totalTokens} tokens`, "engine");
+    }
   } catch (err: any) {
     details.push({ attempt: details.length + 1, action: "error", result: err.message, tokensUsed: 0 });
 
@@ -281,15 +284,6 @@ async function executeHeartbeat(instruction: string) {
       totalTokens,
       timestamp: new Date().toISOString(),
       duration: Date.now() - startTime,
-    });
-
-    await storage.addChatMessage({
-      role: "assistant",
-      content: "< SLEEP >",
-      agentId: "nami",
-      agentName: "Nami",
-      tokensUsed: 0,
-      autonomous: true,
     });
 
     await eventBus.emit("heartbeat", { status: "error", beatNumber, error: err.message }, "nami");
