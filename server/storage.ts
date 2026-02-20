@@ -220,6 +220,7 @@ export class MemStorage implements IStorage {
       createdAt: now,
       completedAt: null,
       progress: 0,
+      maxCycles: data.maxCycles,
     };
     this.swarms.set(id, swarm);
     return swarm;

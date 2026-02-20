@@ -102,12 +102,14 @@ app.use((req, res, next) => {
       try {
         const engine = await import("./engine");
         const { registerEngine } = await import("./tools");
+        const { storage: storageInstance } = await import("./storage");
         registerEngine({
           createSwarmWithQueen: engine.createSwarmWithQueen,
           createSpawn: engine.createSpawn,
           swarmAction: engine.swarmAction,
           runSwarmQueen: engine.runSwarmQueen,
           getSwarmStatus: engine.getSwarmStatus,
+          getSwarm: (swarmId: string) => storageInstance.getSwarm(swarmId),
         });
         await engine.bootEngine();
       } catch (err: any) {

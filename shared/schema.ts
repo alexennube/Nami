@@ -61,6 +61,7 @@ export const swarmSchema = z.object({
   createdAt: z.string(),
   completedAt: z.string().nullable(),
   progress: z.number().default(0),
+  maxCycles: z.number().optional(),
 });
 export type Swarm = z.infer<typeof swarmSchema>;
 
@@ -77,6 +78,7 @@ export const insertSwarmSchema = z.object({
   objective: z.string(),
   status: SwarmStatus,
   steps: z.array(insertSwarmStepSchema).optional(),
+  maxCycles: z.number().optional(),
 });
 export type InsertSwarm = z.infer<typeof insertSwarmSchema>;
 

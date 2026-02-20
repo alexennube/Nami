@@ -5,11 +5,12 @@ import { log } from "./index";
 import { storage } from "./storage";
 
 type EngineFunctions = {
-  createSwarmWithQueen: (data: { name: string; goal: string; objective: string }) => Promise<any>;
+  createSwarmWithQueen: (data: { name: string; goal: string; objective: string; maxCycles?: number }) => Promise<any>;
   createSpawn: (data: { name: string; model: string; systemPrompt: string; parentId: string | null; swarmId: string | null }) => Promise<any>;
   swarmAction: (swarmId: string, action: string) => Promise<any>;
-  runSwarmQueen: (swarmId: string) => Promise<void>;
+  runSwarmQueen: (swarmId: string, maxCycles?: number) => Promise<void>;
   getSwarmStatus: (swarmId: string) => Promise<string>;
+  getSwarm: (swarmId: string) => Promise<any>;
 };
 
 let _engine: EngineFunctions | null = null;
@@ -754,6 +755,10 @@ const createSwarmTool: NamiTool = {
         type: "boolean",
         description: "If true (default), immediately activate the swarm and start the queen's autonomous loop. If false, create in pending state.",
       },
+      max_cycles: {
+        type: "number",
+        description: "Maximum number of queen cycles before auto-completing. Default is 20. Use higher values (30-50) for complex objectives with many sub-tasks.",
+      },
     },
     required: ["name", "goal", "objective"],
   },
@@ -762,19 +767,26 @@ const createSwarmTool: NamiTool = {
     const goal = args.goal as string;
     const objective = args.objective as string;
     const autoStart = args.auto_start !== false;
+    const maxCycles = typeof args.max_cycles === "number" ? Math.max(1, Math.min(args.max_cycles, 100)) : undefined;
 
     try {
       const engine = getEngine();
-      const { swarm, queen } = await engine.createSwarmWithQueen({ name, goal, objective });
+      const { swarm, queen } = await engine.createSwarmWithQueen({ name, goal, objective, maxCycles });
 
-      let result = `Swarm "${swarm.name}" created successfully.\n- ID: ${swarm.id}\n- Goal: ${swarm.goal}\n- Queen: ${queen.name} (${queen.id})\n- Status: ${swarm.status}`;
+      const verified = await engine.getSwarm(swarm.id);
+      if (!verified) {
+        return `Error: Swarm creation failed - swarm not found in storage after creation.`;
+      }
+
+      let result = `Swarm "${verified.name}" created successfully.\n- ID: ${verified.id}\n- Goal: ${verified.goal}\n- Queen: ${queen.name} (${queen.id})\n- Status: ${verified.status}`;
 
       if (autoStart) {
         await engine.swarmAction(swarm.id, "activate");
-        engine.runSwarmQueen(swarm.id).catch((err: any) => {
+        engine.runSwarmQueen(swarm.id, maxCycles).catch((err: any) => {
           log(`SwarmQueen autonomous loop error for ${swarm.id}: ${err.message}`, "engine");
         });
         result += `\n- Auto-started: Queen is now autonomously working on the objective.`;
+        if (maxCycles) result += `\n- Max cycles: ${maxCycles}`;
       }
 
       return result;
@@ -835,8 +847,9 @@ const manageSwarmTool: NamiTool = {
       }
 
       if (action === "activate") {
+        const swarmData = await engine.getSwarm(swarmId);
         await engine.swarmAction(swarmId, "activate");
-        engine.runSwarmQueen(swarmId).catch((err: any) => {
+        engine.runSwarmQueen(swarmId, swarmData?.maxCycles).catch((err: any) => {
           log(`SwarmQueen autonomous loop error for ${swarmId}: ${err.message}`, "engine");
         });
         return `Swarm ${swarmId} activated. Queen is now running autonomously.`;

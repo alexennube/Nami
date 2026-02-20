@@ -347,6 +347,7 @@ export async function createSwarmWithQueen(data: {
   name: string;
   goal: string;
   objective: string;
+  maxCycles?: number;
   steps?: Array<{ name: string; type: "prompt" | "code"; instruction: string; agentId?: string | null }>;
 }): Promise<{ swarm: Swarm; queen: Agent }> {
   const swarm = await storage.createSwarm({
@@ -355,6 +356,7 @@ export async function createSwarmWithQueen(data: {
     objective: data.objective,
     status: "pending",
     steps: data.steps,
+    maxCycles: data.maxCycles,
   });
 
   const queen = await createSwarmQueen(swarm.id, data.goal);
@@ -522,7 +524,12 @@ SWARM MANAGEMENT TOOLS (use these to create and manage swarms):
 - create_swarm: Create a new swarm with an autonomous SwarmQueen. Provide a name, goal, and objective. The queen will independently spawn agents, delegate tasks, monitor progress, and review results before completing. Use this when the user wants to start a multi-agent workflow.
 - manage_swarm: Manage existing swarms. Actions: 'list' (list all swarms), 'status' (get details), 'activate' (start/resume), 'pause', 'complete' (force complete), 'add_spawn' (manually add an agent to a swarm).
 
-IMPORTANT: When users ask you to create a swarm or start a workflow, USE the create_swarm tool. The SwarmQueen is semi-independent and hyper-focused - she will autonomously create spawns, assign them tasks, review their work, and complete the objective without further input from you.
+CRITICAL RULES:
+1. When users ask you to create a swarm or start a workflow, you MUST use the create_swarm tool function call. NEVER fabricate or simulate a swarm creation response. If you do not call the create_swarm tool, the swarm WILL NOT be created.
+2. NEVER invent tool call results. If you want to use a tool, you MUST make an actual function call. Do not write fake tool outputs or pretend you called a tool.
+3. When creating multiple swarms, call create_swarm once for each swarm. Wait for each result before reporting.
+
+The SwarmQueen is semi-independent and hyper-focused - she will autonomously create spawns, assign them tasks, review their work, and complete the objective without further input from you.
 
 Use these tools proactively when you need to understand, modify, or interact with your workspace. When asked about your own code or files, read them directly rather than guessing. Use web_browse to fetch information from the internet. Use google_workspace for Google service interactions. Use ennube_mcp to interact with Ennube AI's cloud tools.
 
@@ -667,7 +674,7 @@ Each cycle, you will receive the current state of your swarm. You must:
 
 Be concise and action-oriented. Do not waste tokens on pleasantries.`;
 
-export async function runSwarmQueen(swarmId: string): Promise<void> {
+export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promise<void> {
   const swarm = await storage.getSwarm(swarmId);
   if (!swarm) throw new Error("Swarm not found");
   if (!swarm.queenId) throw new Error("Swarm has no queen");
@@ -694,7 +701,8 @@ export async function runSwarmQueen(swarmId: string): Promise<void> {
     { role: "system", content: SWARM_QUEEN_SYSTEM_PROMPT(swarm.goal, swarm.objective) },
   ];
 
-  for (let cycle = 0; cycle < QUEEN_MAX_CYCLES; cycle++) {
+  const effectiveMaxCycles = maxCycles || swarm.maxCycles || QUEEN_MAX_CYCLES;
+  for (let cycle = 0; cycle < effectiveMaxCycles; cycle++) {
     const currentSwarm = await storage.getSwarm(swarmId);
     if (!currentSwarm || currentSwarm.status !== "active") {
       log(`SwarmQueen loop exit: swarm ${swarmId} status is ${currentSwarm?.status}`, "engine");
@@ -890,7 +898,7 @@ export async function runSwarmQueen(swarmId: string): Promise<void> {
         }
       }
 
-      const progressPct = Math.min(Math.round(((cycle + 1) / QUEEN_MAX_CYCLES) * 90), 90);
+      const progressPct = Math.min(Math.round(((cycle + 1) / effectiveMaxCycles) * 90), 90);
       await storage.updateSwarm(swarmId, { progress: progressPct });
 
       await eventBus.emit("system", {
