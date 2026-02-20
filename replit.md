@@ -27,8 +27,9 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `shared/schema.ts` - All TypeScript types and Zod schemas (including Thought, Memory, HeartbeatConfig, EngineState)
 - `server/engine.ts` - Core orchestration engine (EventBus, heartbeat loop, agent/swarm management, chat with Nami)
 - `server/openrouter.ts` - OpenRouter.ai BYOK client
+- `server/tools.ts` - Tool registry (file_read, file_write, file_list, shell_exec, self_inspect) with permissions
 - `server/routes.ts` - Express API routes + WebSocket setup
-- `server/storage.ts` - In-memory storage layer (IStorage interface)
+- `server/storage.ts` - In-memory storage layer with file-based config persistence
 - `client/src/App.tsx` - Main app with sidebar layout, chat as default view
 - `client/src/pages/` - Chat, Thoughts, Memory, Heartbeat, Spawns, Swarms, Tools, Activity, Settings
 - `client/src/components/app-sidebar.tsx` - Navigation sidebar with engine controls
@@ -47,8 +48,15 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `GET /api/stats` - System statistics
 - `GET /api/events` - Activity log
 - `GET/PUT /api/config` - System configuration (BYOK API key)
+- `GET /api/tools` - List available tools with status
+- `PUT /api/tools/:name/toggle` - Enable/disable individual tools
+- `GET/PUT /api/tools/permissions` - Tool permission configuration
 
 ## Recent Changes
+- 2026-02-20: Tool system: file_read, file_write, file_list, shell_exec, self_inspect tools for Nami workspace access
+- 2026-02-20: OpenRouter function calling integration for tool use in chat and heartbeat
+- 2026-02-20: Safety/permission layer for tool execution with blocked paths and configurable access
+- 2026-02-20: Settings and config persistence to disk (.nami-data/) surviving server restarts
 - 2026-02-19: Engine auto-boots on server start (always-on autonomous mode). Heartbeat defaults to enabled.
 - 2026-02-19: Heartbeat uses setTimeout-based scheduling with exponential backoff on errors (never crashes)
 - 2026-02-19: Multi-attempt heartbeat efforts (up to 3 LLM cycles per beat) with summary generation

@@ -209,10 +209,11 @@ async function executeHeartbeat(instruction: string) {
       const engineState = await storage.getEngineState();
       if (engineState !== "running") break;
 
-      const { content, tokensUsed } = await chatCompletion(conversationHistory, { model: config.defaultModel });
+      const { content, tokensUsed, toolCalls } = await chatCompletion(conversationHistory, { model: config.defaultModel, useTools: true });
       totalTokens += tokensUsed;
 
-      const actionSummary = content.length > 150 ? content.substring(0, 150) + "..." : content;
+      const toolSummary = toolCalls?.length ? ` [tools: ${toolCalls.map((t) => t.name).join(", ")}]` : "";
+      const actionSummary = (content.length > 150 ? content.substring(0, 150) + "..." : content) + toolSummary;
       details.push({ attempt, action: `heartbeat_cycle_${attempt}`, result: actionSummary, tokensUsed });
 
       conversationHistory.push({ role: "assistant", content });
@@ -513,6 +514,15 @@ Your capabilities:
 - Each swarm has a SwarmQueen that autonomously manages QA - you cannot override her primary objective
 - Route tasks to the right agents and coordinate multi-step workflows
 
+You have access to workspace tools:
+- file_read: Read any file in your workspace (source code, configs, data)
+- file_write: Create or modify files in your workspace
+- file_list: Browse the directory structure of your workspace
+- shell_exec: Execute shell commands in your workspace
+- self_inspect: Inspect your own internal state (config, agents, swarms, heartbeat)
+
+Use these tools proactively when you need to understand, modify, or interact with your workspace. When asked about your own code or files, read them directly rather than guessing.
+
 You communicate clearly and concisely. When users describe tasks, help them understand how you'll orchestrate agents and swarms to accomplish their goals. You think in terms of decomposing work into agent hierarchies.`;
 
 export async function chatWithNami(userMessage: string): Promise<{ content: string; tokensUsed: number }> {
@@ -538,7 +548,7 @@ export async function chatWithNami(userMessage: string): Promise<{ content: stri
   ];
 
   const config = await storage.getConfig();
-  const { content, tokensUsed } = await chatCompletion(messages, { model: config.defaultModel });
+  const { content, tokensUsed, toolCalls } = await chatCompletion(messages, { model: config.defaultModel, useTools: true });
 
   await storage.addChatMessage({
     role: "assistant",
@@ -549,6 +559,14 @@ export async function chatWithNami(userMessage: string): Promise<{ content: stri
     autonomous: false,
   });
 
+  if (toolCalls && toolCalls.length > 0) {
+    await storage.addThought({
+      content: `Used ${toolCalls.length} tool(s): ${toolCalls.map((t) => t.name).join(", ")}`,
+      source: "nami",
+      type: "action",
+    });
+  }
+
   await storage.addThought({
     content: `Responded to user: "${content.substring(0, 100)}"`,
     source: "nami",
@@ -556,7 +574,7 @@ export async function chatWithNami(userMessage: string): Promise<{ content: stri
   });
 
   await eventBus.emit("message_sent", { agentName: "Nami", content: content.substring(0, 200), tokensUsed }, "nami");
-  log(`Nami chat: ${tokensUsed} tokens`, "engine");
+  log(`Nami chat: ${tokensUsed} tokens, ${toolCalls?.length || 0} tool calls`, "engine");
 
   return { content, tokensUsed };
 }

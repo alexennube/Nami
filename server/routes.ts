@@ -6,6 +6,7 @@ import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, 
 import { testConnection } from "./openrouter";
 import { insertAgentSchema, insertSwarmSchema } from "@shared/schema";
 import { log } from "./index";
+import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -336,6 +337,37 @@ export async function registerRoutes(
     const { agentId, swarmId } = req.query;
     const messages = await storage.getMessages(agentId as string, swarmId as string);
     res.json(messages);
+  });
+
+  app.get("/api/tools", async (_req, res) => {
+    const tools = getTools().map((t) => ({
+      name: t.name,
+      description: t.description,
+      category: t.category,
+      enabled: t.enabled,
+      parameters: t.parameters,
+    }));
+    res.json(tools);
+  });
+
+  app.put("/api/tools/:name/toggle", async (req, res) => {
+    const { name } = req.params;
+    const { enabled } = req.body;
+    const success = setToolEnabled(name, enabled);
+    if (!success) {
+      res.status(404).json({ message: `Tool '${name}' not found` });
+      return;
+    }
+    res.json({ name, enabled });
+  });
+
+  app.get("/api/tools/permissions", async (_req, res) => {
+    res.json(getPermissions());
+  });
+
+  app.put("/api/tools/permissions", async (req, res) => {
+    const updated = updatePermissions(req.body);
+    res.json(updated);
   });
 
   return httpServer;

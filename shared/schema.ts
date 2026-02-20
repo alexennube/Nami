@@ -109,7 +109,7 @@ export const thoughtSchema = z.object({
   content: z.string(),
   source: z.string(),
   timestamp: z.string(),
-  type: z.enum(["reasoning", "planning", "reflection", "observation"]),
+  type: z.enum(["reasoning", "planning", "reflection", "observation", "action"]),
 });
 export type Thought = z.infer<typeof thoughtSchema>;
 

@@ -1,10 +1,14 @@
 import OpenAI from "openai";
 import { storage } from "./storage";
 import { log } from "./index";
+import { getToolsForLLM, executeToolCall, getEnabledTools } from "./tools";
 
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  tool_calls?: any[];
+  tool_call_id?: string;
+  name?: string;
 }
 
 export interface ChatOptions {
@@ -12,6 +16,8 @@ export interface ChatOptions {
   temperature?: number;
   maxTokens?: number;
   stream?: boolean;
+  useTools?: boolean;
+  maxToolRounds?: number;
 }
 
 export async function getApiKey(): Promise<string> {
@@ -42,30 +48,99 @@ export async function createOpenRouterClient(): Promise<OpenAI> {
 export async function chatCompletion(
   messages: ChatMessage[],
   options: ChatOptions = {}
-): Promise<{ content: string; tokensUsed: number }> {
+): Promise<{ content: string; tokensUsed: number; toolCalls?: Array<{ name: string; args: any; result: string }> }> {
   const config = await storage.getConfig();
   const client = await createOpenRouterClient();
 
   const model = options.model || config.defaultModel;
   const temperature = options.temperature ?? config.temperature;
   const maxTokens = options.maxTokens || config.maxTokensPerRequest;
+  const useTools = options.useTools ?? false;
+  const maxToolRounds = options.maxToolRounds ?? 5;
 
-  log(`OpenRouter request: model=${model}, messages=${messages.length}`, "openrouter");
+  const enabledTools = getEnabledTools();
+  const hasTools = useTools && enabledTools.length > 0;
+  const toolDefs = hasTools ? getToolsForLLM() : undefined;
+
+  log(`OpenRouter request: model=${model}, messages=${messages.length}, tools=${hasTools ? enabledTools.length : 0}`, "openrouter");
+
+  const allToolCalls: Array<{ name: string; args: any; result: string }> = [];
+  let totalTokens = 0;
+  let finalContent = "";
+
+  const conversationMessages: any[] = [...messages];
 
   try {
-    const response = await client.chat.completions.create({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    });
+    for (let round = 0; round <= maxToolRounds; round++) {
+      const requestParams: any = {
+        model,
+        messages: conversationMessages,
+        temperature,
+        max_tokens: maxTokens,
+      };
 
-    const content = response.choices[0]?.message?.content || "";
-    const tokensUsed = response.usage?.total_tokens || 0;
+      if (hasTools && round < maxToolRounds) {
+        requestParams.tools = toolDefs;
+        requestParams.tool_choice = "auto";
+      }
 
-    log(`OpenRouter response: ${tokensUsed} tokens used`, "openrouter");
+      const response = await client.chat.completions.create(requestParams);
+      totalTokens += response.usage?.total_tokens || 0;
 
-    return { content, tokensUsed };
+      const choice = response.choices[0];
+      if (!choice) break;
+
+      const message = choice.message;
+
+      if (message.tool_calls && message.tool_calls.length > 0) {
+        conversationMessages.push({
+          role: "assistant",
+          content: message.content || null,
+          tool_calls: message.tool_calls,
+        });
+
+        for (const tc of message.tool_calls as any[]) {
+          const fnName = tc.function?.name || tc.name || "";
+          let fnArgs: Record<string, any> = {};
+          try {
+            fnArgs = JSON.parse(tc.function?.arguments || tc.arguments || "{}");
+          } catch (parseErr: any) {
+            const errResult = `Error: Failed to parse tool arguments: ${parseErr.message}`;
+            allToolCalls.push({ name: fnName, args: {}, result: errResult });
+            conversationMessages.push({ role: "tool", tool_call_id: tc.id, content: errResult });
+            continue;
+          }
+
+          log(`Tool call: ${fnName}(${JSON.stringify(fnArgs).substring(0, 80)})`, "openrouter");
+
+          const result = await executeToolCall(fnName, fnArgs);
+          allToolCalls.push({ name: fnName, args: fnArgs, result: result.substring(0, 500) });
+
+          conversationMessages.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: result,
+          });
+        }
+
+        continue;
+      }
+
+      finalContent = message.content || "";
+      break;
+    }
+
+    if (!finalContent && allToolCalls.length > 0) {
+      finalContent = `Executed ${allToolCalls.length} tool call(s): ${allToolCalls.map((tc) => tc.name).join(", ")}.`;
+    }
+
+    log(`OpenRouter response: ${totalTokens} tokens, ${allToolCalls.length} tool calls`, "openrouter");
+
+    return {
+      content: finalContent,
+      tokensUsed: totalTokens,
+      toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
+    };
   } catch (error: any) {
     log(`OpenRouter error: ${error.message}`, "openrouter");
     throw new Error(`OpenRouter API error: ${error.message}`);
