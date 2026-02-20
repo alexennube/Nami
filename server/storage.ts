@@ -11,6 +11,10 @@ const CHAT_HISTORY_FILE = path.join(PERSIST_DIR, "chat-history.json");
 const THOUGHTS_FILE = path.join(PERSIST_DIR, "thoughts.json");
 const MEMORIES_FILE = path.join(PERSIST_DIR, "memories.json");
 const SWARM_MESSAGES_FILE = path.join(PERSIST_DIR, "swarm-messages.json");
+const AGENTS_FILE = path.join(PERSIST_DIR, "agents.json");
+const SWARMS_FILE = path.join(PERSIST_DIR, "swarms.json");
+const EVENTS_FILE = path.join(PERSIST_DIR, "events.json");
+const MESSAGES_FILE = path.join(PERSIST_DIR, "messages.json");
 const SKILLS_FILE = path.join(PERSIST_DIR, "skills.json");
 const PINNED_CHATS_FILE = path.join(PERSIST_DIR, "pinned-chats.json");
 
@@ -129,6 +133,9 @@ export class MemStorage implements IStorage {
     const defaultConfig: NamiConfig = {
       openRouterApiKey: process.env.OPENROUTER_API_KEY || "",
       defaultModel: "openai/gpt-4o",
+      swarmQueenModel: "openai/gpt-4o",
+      engineMindModel: "qwen/qwen3-coder-flash",
+      engineMindEnabled: true,
       siteUrl: "https://agentnami.com",
       siteName: "AgentNami",
       maxConcurrentAgents: 10,
@@ -173,7 +180,20 @@ export class MemStorage implements IStorage {
       this.pinnedChats.set(pin.id, pin);
     }
 
-    console.log(`[storage] Loaded from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState}, chat: ${this.chatHistory.length} msgs, thoughts: ${this.thoughts.length}, memories: ${this.memories.size}, skills: ${this.skills.size}, pins: ${this.pinnedChats.size})`);
+    const savedAgents = loadJson<Agent[]>(AGENTS_FILE, []);
+    for (const agent of savedAgents) {
+      this.agents.set(agent.id, agent);
+    }
+
+    const savedSwarms = loadJson<Swarm[]>(SWARMS_FILE, []);
+    for (const swarm of savedSwarms) {
+      this.swarms.set(swarm.id, swarm);
+    }
+
+    this.events = loadJson<NamiEvent[]>(EVENTS_FILE, []);
+    this.messages = loadJson<AgentMessage[]>(MESSAGES_FILE, []);
+
+    console.log(`[storage] Loaded from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState}, chat: ${this.chatHistory.length} msgs, thoughts: ${this.thoughts.length}, memories: ${this.memories.size}, skills: ${this.skills.size}, pins: ${this.pinnedChats.size}, agents: ${this.agents.size}, swarms: ${this.swarms.size})`);
   }
 
   async getAgents(): Promise<Agent[]> {
@@ -189,6 +209,7 @@ export class MemStorage implements IStorage {
     const now = new Date().toISOString();
     const agent: Agent = { ...data, id, createdAt: now, lastActiveAt: now, tokensUsed: 0, messagesProcessed: 0 };
     this.agents.set(id, agent);
+    this.persistAgents();
     return agent;
   }
 
@@ -197,11 +218,18 @@ export class MemStorage implements IStorage {
     if (!agent) return undefined;
     const updated = { ...agent, ...updates, lastActiveAt: new Date().toISOString() };
     this.agents.set(id, updated);
+    this.persistAgents();
     return updated;
   }
 
   async deleteAgent(id: string): Promise<boolean> {
-    return this.agents.delete(id);
+    const result = this.agents.delete(id);
+    if (result) this.persistAgents();
+    return result;
+  }
+
+  private persistAgents() {
+    saveJson(AGENTS_FILE, Array.from(this.agents.values()));
   }
 
   async getSwarms(): Promise<Swarm[]> {
@@ -240,6 +268,7 @@ export class MemStorage implements IStorage {
       maxCycles: data.maxCycles,
     };
     this.swarms.set(id, swarm);
+    this.persistSwarms();
     return swarm;
   }
 
@@ -248,11 +277,18 @@ export class MemStorage implements IStorage {
     if (!swarm) return undefined;
     const updated = { ...swarm, ...updates };
     this.swarms.set(id, updated);
+    this.persistSwarms();
     return updated;
   }
 
   async deleteSwarm(id: string): Promise<boolean> {
-    return this.swarms.delete(id);
+    const result = this.swarms.delete(id);
+    if (result) this.persistSwarms();
+    return result;
+  }
+
+  private persistSwarms() {
+    saveJson(SWARMS_FILE, Array.from(this.swarms.values()));
   }
 
   async getEvents(): Promise<NamiEvent[]> {
@@ -263,7 +299,12 @@ export class MemStorage implements IStorage {
     const event: NamiEvent = { ...data, id: randomUUID(), timestamp: new Date().toISOString() };
     this.events.push(event);
     if (this.events.length > 500) this.events = this.events.slice(-500);
+    this.persistEvents();
     return event;
+  }
+
+  private persistEvents() {
+    saveJson(EVENTS_FILE, this.events);
   }
 
   async getConfig(): Promise<NamiConfig> {
@@ -301,7 +342,12 @@ export class MemStorage implements IStorage {
     const msg: AgentMessage = { ...data, id: randomUUID(), timestamp: new Date().toISOString() };
     this.messages.push(msg);
     if (this.messages.length > 1000) this.messages = this.messages.slice(-1000);
+    this.persistMessages();
     return msg;
+  }
+
+  private persistMessages() {
+    saveJson(MESSAGES_FILE, this.messages);
   }
 
   async getChatHistory(): Promise<ChatMessage[]> {

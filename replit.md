@@ -61,6 +61,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `POST /api/engine-mind/compact` - Trigger chat history compaction
 
 ## Recent Changes
+- 2026-02-20: Full disk persistence for agents, swarms, events, and agent messages (.nami-data/) - all survive server restarts
 - 2026-02-20: Swarm detail page (/swarms/:id) with group-chat-style activity feed showing queen thinking, spawn creation, spawn results, reviews, errors, completion messages. SwarmMessage schema + storage + API route. Swarm cards now clickable with View button.
 - 2026-02-20: Engine Mind (Pi framework) integration: server/engine-mind.ts with self-healing executeWithHealing, spawn validation, auto-compaction (40+ msg threshold), diagnostics, Pi Session monitoring page, Engine Mind settings (enable/disable, model selector), API routes (/api/engine-mind/status, initialize, shutdown, reinitialize, diagnostic, compact)
 - 2026-02-20: Pinned chat feature: pin_chat tool for Nami, PinnedChat schema with insert validation, sidebar display with hover-to-unpin, disk persistence
