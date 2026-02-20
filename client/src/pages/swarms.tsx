@@ -13,7 +13,8 @@ import { Progress } from "@/components/ui/progress";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Network, Plus, Crown, Bot, Play, Pause, Trash2, Target, Code, MessageSquare, ChevronDown, ChevronRight } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Network, Plus, Crown, Bot, Play, Pause, Trash2, Target, Code, MessageSquare, ChevronDown, ChevronRight, Zap, CheckCircle2, XCircle } from "lucide-react";
 import type { Swarm, Agent, SwarmStep } from "@shared/schema";
 
 type NewStep = { name: string; type: "prompt" | "code"; instruction: string };
@@ -335,8 +336,39 @@ function SwarmCard({ swarm }: { swarm: Swarm }) {
   );
 }
 
+type FilterTab = "active" | "completed" | "cancelled";
+
+const ACTIVE_STATUSES = ["active", "pending", "paused"];
+const COMPLETED_STATUSES = ["completed"];
+const CANCELLED_STATUSES = ["cancelled", "failed"];
+
+function filterSwarms(swarms: Swarm[], tab: FilterTab): Swarm[] {
+  switch (tab) {
+    case "active":
+      return swarms.filter((s) => ACTIVE_STATUSES.includes(s.status));
+    case "completed":
+      return swarms.filter((s) => COMPLETED_STATUSES.includes(s.status));
+    case "cancelled":
+      return swarms.filter((s) => CANCELLED_STATUSES.includes(s.status));
+    default:
+      return swarms;
+  }
+}
+
+function countByFilter(swarms: Swarm[]): Record<FilterTab, number> {
+  return {
+    active: swarms.filter((s) => ACTIVE_STATUSES.includes(s.status)).length,
+    completed: swarms.filter((s) => COMPLETED_STATUSES.includes(s.status)).length,
+    cancelled: swarms.filter((s) => CANCELLED_STATUSES.includes(s.status)).length,
+  };
+}
+
 export default function Swarms() {
+  const [filter, setFilter] = useState<FilterTab>("active");
   const { data: swarms, isLoading } = useQuery<Swarm[]>({ queryKey: ["/api/swarms"] });
+
+  const counts = swarms ? countByFilter(swarms) : { active: 0, completed: 0, cancelled: 0 };
+  const filtered = swarms ? filterSwarms(swarms, filter) : [];
 
   return (
     <div className="flex flex-col gap-6 p-6 max-w-[1400px]">
@@ -348,25 +380,61 @@ export default function Swarms() {
         <CreateSwarmDialog />
       </div>
 
+      <ToggleGroup
+        type="single"
+        value={filter}
+        onValueChange={(v) => { if (v) setFilter(v as FilterTab); }}
+        className="justify-start"
+        data-testid="toggle-swarm-filter"
+      >
+        <ToggleGroupItem value="active" aria-label="Active swarms" className="gap-1.5 text-xs" data-testid="toggle-filter-active">
+          <Zap className="w-3.5 h-3.5" />
+          Active
+          {counts.active > 0 && (
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4 min-w-4 justify-center">{counts.active}</Badge>
+          )}
+        </ToggleGroupItem>
+        <ToggleGroupItem value="completed" aria-label="Completed swarms" className="gap-1.5 text-xs" data-testid="toggle-filter-completed">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Completed
+          {counts.completed > 0 && (
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4 min-w-4 justify-center">{counts.completed}</Badge>
+          )}
+        </ToggleGroupItem>
+        <ToggleGroupItem value="cancelled" aria-label="Cancelled and failed swarms" className="gap-1.5 text-xs" data-testid="toggle-filter-cancelled">
+          <XCircle className="w-3.5 h-3.5" />
+          Cancelled / Failed
+          {counts.cancelled > 0 && (
+            <Badge variant="secondary" className="ml-1 text-[10px] px-1.5 py-0 h-4 min-w-4 justify-center">{counts.cancelled}</Badge>
+          )}
+        </ToggleGroupItem>
+      </ToggleGroup>
+
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(3)].map((_, i) => (
             <Card key={i}><CardContent className="p-4"><Skeleton className="h-48 w-full" /></CardContent></Card>
           ))}
         </div>
-      ) : !swarms || swarms.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Network className="w-12 h-12 text-muted-foreground/30 mb-4" />
-            <h3 className="text-sm font-medium mb-1">No swarms yet</h3>
+            <h3 className="text-sm font-medium mb-1">
+              {filter === "active" ? "No active swarms" : filter === "completed" ? "No completed swarms" : "No cancelled or failed swarms"}
+            </h3>
             <p className="text-[11px] text-muted-foreground text-center max-w-xs">
-              A swarm is a coordinated group of agents working toward a goal. Each swarm has a SwarmQueen for autonomous QA and can include prompt or code workflow steps.
+              {filter === "active"
+                ? "Create a new swarm to coordinate agents toward a goal. Each swarm has a SwarmQueen for autonomous QA."
+                : filter === "completed"
+                  ? "Completed swarms will appear here once they finish their objectives."
+                  : "Cancelled or failed swarms will appear here."}
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {swarms.map((swarm) => (
+          {filtered.map((swarm) => (
             <SwarmCard key={swarm.id} swarm={swarm} />
           ))}
         </div>
