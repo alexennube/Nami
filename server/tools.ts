@@ -573,17 +573,34 @@ const ennubeMcpTool: NamiTool = {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "*/*",
+          "Accept": "application/json, text/event-stream",
           "Authorization": `Bearer ${apiKey}`,
         },
         body: JSON.stringify(body),
       });
 
       if (!response.ok) {
-        return `Error: Ennube MCP returned ${response.status} ${response.statusText}`;
+        const errBody = await response.text();
+        return `Error: Ennube MCP returned ${response.status} ${response.statusText}: ${errBody}`;
       }
 
-      const data = await response.json() as any;
+      const contentType = response.headers.get("content-type") || "";
+      let data: any;
+
+      if (contentType.includes("text/event-stream")) {
+        const rawText = await response.text();
+        const lines = rawText.split("\n");
+        let jsonPayload = "";
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            jsonPayload += line.slice(6);
+          }
+        }
+        if (!jsonPayload) return `Error: No data received from Ennube MCP SSE stream.`;
+        data = JSON.parse(jsonPayload);
+      } else {
+        data = await response.json() as any;
+      }
 
       if (data.error) {
         return `MCP Error: ${data.error.message || JSON.stringify(data.error)}`;
