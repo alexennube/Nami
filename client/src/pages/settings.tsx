@@ -33,6 +33,7 @@ export default function Settings() {
 
   const [apiKey, setApiKey] = useState("");
   const [defaultModel, setDefaultModel] = useState("openai/gpt-4o");
+  const [swarmQueenModel, setSwarmQueenModel] = useState("");
   const [siteUrl, setSiteUrl] = useState("https://agentnami.com");
   const [siteName, setSiteName] = useState("AgentNami");
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(10);
@@ -40,11 +41,14 @@ export default function Settings() {
   const [temperature, setTemperature] = useState(0.7);
   const [modelSearch, setModelSearch] = useState("");
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
+  const [queenModelSearch, setQueenModelSearch] = useState("");
+  const [queenModelDropdownOpen, setQueenModelDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (config) {
       setApiKey(config.openRouterApiKey || "");
       setDefaultModel(config.defaultModel);
+      setSwarmQueenModel(config.swarmQueenModel || "");
       setSiteUrl(config.siteUrl);
       setSiteName(config.siteName);
       setMaxConcurrentAgents(config.maxConcurrentAgents);
@@ -68,11 +72,28 @@ export default function Settings() {
     return found ? found.name || found.id : defaultModel;
   }, [models, defaultModel]);
 
+  const filteredQueenModels = useMemo(() => {
+    if (!models) return [];
+    if (!queenModelSearch.trim()) return models;
+    const q = queenModelSearch.toLowerCase();
+    return models.filter(
+      (m) => m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q))
+    );
+  }, [models, queenModelSearch]);
+
+  const selectedQueenModelName = useMemo(() => {
+    if (!swarmQueenModel) return "Same as default model";
+    if (!models) return swarmQueenModel;
+    const found = models.find((m) => m.id === swarmQueenModel);
+    return found ? found.name || found.id : swarmQueenModel;
+  }, [models, swarmQueenModel]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("PUT", "/api/config", {
         openRouterApiKey: apiKey || undefined,
         defaultModel,
+        swarmQueenModel,
         siteUrl,
         siteName,
         maxConcurrentAgents,
@@ -240,6 +261,93 @@ export default function Settings() {
               )}
             </div>
             <span className="text-[10px] text-muted-foreground font-mono">{defaultModel}</span>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs">SwarmQueen Model</Label>
+            <div className="relative">
+              <Button
+                variant="outline"
+                className="w-full justify-between font-mono text-xs"
+                onClick={() => setQueenModelDropdownOpen(!queenModelDropdownOpen)}
+                data-testid="select-queen-model"
+              >
+                <span className="truncate">{selectedQueenModelName}</span>
+                <Search className="w-3 h-3 ml-2 shrink-0 text-muted-foreground" />
+              </Button>
+
+              {queenModelDropdownOpen && (
+                <div className="absolute top-full left-0 right-0 z-50 mt-1 border rounded-md bg-popover shadow-md">
+                  <div className="p-2 border-b">
+                    <div className="flex items-center gap-2 px-2">
+                      <Search className="w-3 h-3 text-muted-foreground shrink-0" />
+                      <input
+                        type="text"
+                        placeholder="Search models..."
+                        value={queenModelSearch}
+                        onChange={(e) => setQueenModelSearch(e.target.value)}
+                        className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                        autoFocus
+                        data-testid="input-queen-model-search"
+                      />
+                    </div>
+                  </div>
+                  <ScrollArea className="h-[300px]">
+                    <div className="p-1">
+                      <button
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left text-xs hover-elevate cursor-pointer"
+                        onClick={() => {
+                          setSwarmQueenModel("");
+                          setQueenModelDropdownOpen(false);
+                          setQueenModelSearch("");
+                        }}
+                        data-testid="option-queen-model-default"
+                      >
+                        <Check className={`w-3 h-3 shrink-0 ${!swarmQueenModel ? "text-primary" : "invisible"}`} />
+                        <span className="font-medium">Same as default model</span>
+                      </button>
+                      {modelsLoading ? (
+                        <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading models...
+                        </div>
+                      ) : filteredQueenModels.length === 0 ? (
+                        <div className="py-6 text-center text-xs text-muted-foreground">
+                          No models found
+                        </div>
+                      ) : (
+                        filteredQueenModels.map((m) => (
+                          <button
+                            key={m.id}
+                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left text-xs hover-elevate cursor-pointer"
+                            onClick={() => {
+                              setSwarmQueenModel(m.id);
+                              setQueenModelDropdownOpen(false);
+                              setQueenModelSearch("");
+                            }}
+                            data-testid={`option-queen-model-${m.id}`}
+                          >
+                            <Check className={`w-3 h-3 shrink-0 ${swarmQueenModel === m.id ? "text-primary" : "invisible"}`} />
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="font-medium truncate">{m.name || m.id}</span>
+                              <span className="text-[10px] text-muted-foreground font-mono truncate">{m.id}</span>
+                            </div>
+                            {m.context_length && (
+                              <Badge variant="secondary" className="text-[9px] shrink-0 no-default-active-elevate">
+                                {(m.context_length / 1000).toFixed(0)}k ctx
+                              </Badge>
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+            </div>
+            <span className="text-[10px] text-muted-foreground">
+              {swarmQueenModel ? <span className="font-mono">{swarmQueenModel}</span> : "Uses the default model when empty"}
+            </span>
           </div>
 
           <div className="flex flex-col gap-2">

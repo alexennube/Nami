@@ -196,6 +196,7 @@ export type ToolDefinition = z.infer<typeof toolDefinitionSchema>;
 export const namiConfigSchema = z.object({
   openRouterApiKey: z.string().optional(),
   defaultModel: z.string().default("openai/gpt-4o"),
+  swarmQueenModel: z.string().default(""),
   siteUrl: z.string().default("https://agentnami.com"),
   siteName: z.string().default("AgentNami"),
   maxConcurrentAgents: z.number().default(10),
