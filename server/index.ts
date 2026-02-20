@@ -100,8 +100,16 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
 
       try {
-        const { bootEngine } = await import("./engine");
-        await bootEngine();
+        const engine = await import("./engine");
+        const { registerEngine } = await import("./tools");
+        registerEngine({
+          createSwarmWithQueen: engine.createSwarmWithQueen,
+          createSpawn: engine.createSpawn,
+          swarmAction: engine.swarmAction,
+          runSwarmQueen: engine.runSwarmQueen,
+          getSwarmStatus: engine.getSwarmStatus,
+        });
+        await engine.bootEngine();
       } catch (err: any) {
         log(`Engine auto-boot failed (non-fatal): ${err.message}`, "engine");
       }

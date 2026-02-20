@@ -54,6 +54,10 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `GET/PUT /api/tools/permissions` - Tool permission configuration
 
 ## Recent Changes
+- 2026-02-20: Added create_swarm and manage_swarm tools for Nami's LLM function calling
+- 2026-02-20: SwarmQueen autonomous loop: queen creates spawns, delegates tasks, monitors, reviews, and completes objectives independently
+- 2026-02-20: SwarmQueen is semi-independent (immutable primary objective), hyper-focused, defaults to spawning agents for work
+- 2026-02-20: Fixed Ennube MCP tools/list truncation - now shows all 7 tools with concise summary format
 - 2026-02-20: Added Skills page under Engine Mind (markdown skill documents with CRUD + persistence)
 - 2026-02-20: Added web_browse (Chromium), google_workspace (gogCLI), ennube_mcp (Ennube AI MCP) tools
 - 2026-02-20: Chat history, thoughts, memories now persist to disk (.nami-data/) across restarts

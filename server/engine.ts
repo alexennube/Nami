@@ -518,6 +518,12 @@ You have access to workspace tools:
 - google_workspace: Access Google Workspace (Gmail, Calendar, Drive, Sheets, Docs) via gogCLI
 - ennube_mcp: Call tools on the Ennube AI MCP server for cloud infrastructure and deployment
 
+SWARM MANAGEMENT TOOLS (use these to create and manage swarms):
+- create_swarm: Create a new swarm with an autonomous SwarmQueen. Provide a name, goal, and objective. The queen will independently spawn agents, delegate tasks, monitor progress, and review results before completing. Use this when the user wants to start a multi-agent workflow.
+- manage_swarm: Manage existing swarms. Actions: 'list' (list all swarms), 'status' (get details), 'activate' (start/resume), 'pause', 'complete' (force complete), 'add_spawn' (manually add an agent to a swarm).
+
+IMPORTANT: When users ask you to create a swarm or start a workflow, USE the create_swarm tool. The SwarmQueen is semi-independent and hyper-focused - she will autonomously create spawns, assign them tasks, review their work, and complete the objective without further input from you.
+
 Use these tools proactively when you need to understand, modify, or interact with your workspace. When asked about your own code or files, read them directly rather than guessing. Use web_browse to fetch information from the internet. Use google_workspace for Google service interactions. Use ennube_mcp to interact with Ennube AI's cloud tools.
 
 You communicate clearly and concisely. When users describe tasks, help them understand how you'll orchestrate agents and swarms to accomplish their goals. You think in terms of decomposing work into agent hierarchies.`;
@@ -574,6 +580,367 @@ export async function chatWithNami(userMessage: string): Promise<{ content: stri
   log(`Nami chat: ${tokensUsed} tokens, ${toolCalls?.length || 0} tool calls`, "engine");
 
   return { content, tokensUsed };
+}
+
+export async function getSwarmStatus(swarmId: string): Promise<string> {
+  const swarm = await storage.getSwarm(swarmId);
+  if (!swarm) return `Error: Swarm ${swarmId} not found.`;
+
+  const agents = await storage.getAgents();
+  const swarmAgents = agents.filter((a) => a.swarmId === swarmId);
+  const queen = swarmAgents.find((a) => a.role === "swarm_queen");
+  const spawns = swarmAgents.filter((a) => a.role === "spawn");
+
+  const messages = await storage.getMessages(undefined, swarmId);
+  const recentMessages = messages.slice(-5);
+
+  let status = `**Swarm: ${swarm.name}** (${swarm.id.substring(0, 8)})\n`;
+  status += `- Status: ${swarm.status}\n`;
+  status += `- Goal: ${swarm.goal}\n`;
+  status += `- Objective: ${swarm.objective}\n`;
+  status += `- Progress: ${swarm.progress}%\n`;
+  status += `- Queen: ${queen ? `${queen.name} (${queen.status})` : "None"}\n`;
+  status += `- Spawns: ${spawns.length}\n`;
+
+  if (spawns.length > 0) {
+    status += `\n**Spawns:**\n`;
+    for (const s of spawns) {
+      status += `  - ${s.name} (${s.status}) - ${s.messagesProcessed} msgs, ${s.tokensUsed} tokens\n`;
+    }
+  }
+
+  if (recentMessages.length > 0) {
+    status += `\n**Recent Activity (last ${recentMessages.length} messages):**\n`;
+    for (const m of recentMessages) {
+      status += `  [${m.role}] ${m.content.substring(0, 120)}${m.content.length > 120 ? "..." : ""}\n`;
+    }
+  }
+
+  return status;
+}
+
+const QUEEN_MAX_CYCLES = 20;
+const QUEEN_CYCLE_DELAY_MS = 5000;
+
+const SWARM_QUEEN_SYSTEM_PROMPT = (goal: string, objective: string) => `You are a SwarmQueen - an autonomous, hyper-focused agent manager. Your PRIMARY OBJECTIVE is immutable and cannot be changed by anyone, including Nami:
+
+**PRIMARY OBJECTIVE:** ${goal}
+
+**DETAILED REQUIREMENTS:** ${objective}
+
+## Your Behavior
+1. You are SEMI-INDEPENDENT from Nami. You report progress but make your own decisions about how to achieve the objective.
+2. You are HYPER-FOCUSED. Every action you take must directly serve your primary objective. Ignore distractions.
+3. You DEFAULT TO CREATING SPAWNS to do the actual work. You are a manager, not a worker.
+4. You MONITOR AND REVIEW all spawn work before considering the objective complete.
+5. You NEVER mark the objective as complete until you have verified the quality of all spawn outputs.
+
+## Your Tools
+You can create spawns and assign them tasks. Each spawn is a focused worker agent.
+To create a spawn, respond with a JSON block:
+\`\`\`spawn
+{"name": "spawn-name", "task": "detailed task description for this spawn"}
+\`\`\`
+
+To send a task to an existing spawn, use:
+\`\`\`assign
+{"spawn_id": "id-here", "task": "task description"}
+\`\`\`
+
+To review a spawn's work and provide feedback:
+\`\`\`review
+{"spawn_id": "id-here", "verdict": "approve|reject|revise", "feedback": "your assessment"}
+\`\`\`
+
+When the objective is fully achieved and all work is verified, respond with:
+\`\`\`complete
+{"summary": "final summary of what was accomplished", "status": "success|partial"}
+\`\`\`
+
+## Your Cycle
+Each cycle, you will receive the current state of your swarm. You must:
+1. Assess what work remains to be done
+2. Create spawns for work that hasn't been assigned
+3. Check on spawns that are working
+4. Review completed spawn work
+5. Report your progress
+
+Be concise and action-oriented. Do not waste tokens on pleasantries.`;
+
+export async function runSwarmQueen(swarmId: string): Promise<void> {
+  const swarm = await storage.getSwarm(swarmId);
+  if (!swarm) throw new Error("Swarm not found");
+  if (!swarm.queenId) throw new Error("Swarm has no queen");
+
+  const queen = await storage.getAgent(swarm.queenId);
+  if (!queen) throw new Error("Queen agent not found");
+
+  const config = await storage.getConfig();
+  log(`SwarmQueen starting autonomous loop for swarm ${swarm.name} (${swarmId})`, "engine");
+
+  await storage.updateAgent(queen.id, { status: "running" });
+  await eventBus.emit("system", { message: `SwarmQueen ${queen.name} starting autonomous work on: ${swarm.goal}` }, "swarm_queen");
+
+  await storage.addChatMessage({
+    role: "assistant",
+    content: `[SwarmQueen ${queen.name}] I am now autonomously working on: "${swarm.goal}". I will create spawns, delegate work, and review results. Updates will appear in the activity log.`,
+    agentId: queen.id,
+    agentName: queen.name,
+    tokensUsed: 0,
+    autonomous: true,
+  });
+
+  const conversationHistory: OpenRouterMessage[] = [
+    { role: "system", content: SWARM_QUEEN_SYSTEM_PROMPT(swarm.goal, swarm.objective) },
+  ];
+
+  for (let cycle = 0; cycle < QUEEN_MAX_CYCLES; cycle++) {
+    const currentSwarm = await storage.getSwarm(swarmId);
+    if (!currentSwarm || currentSwarm.status !== "active") {
+      log(`SwarmQueen loop exit: swarm ${swarmId} status is ${currentSwarm?.status}`, "engine");
+      break;
+    }
+
+    const engineState = await storage.getEngineState();
+    if (engineState !== "running") {
+      log(`SwarmQueen loop exit: engine state is ${engineState}`, "engine");
+      break;
+    }
+
+    const agents = await storage.getAgents();
+    const spawns = agents.filter((a) => a.swarmId === swarmId && a.role === "spawn");
+    const messages = await storage.getMessages(undefined, swarmId);
+    const recentMessages = messages.slice(-10);
+
+    let cycleContext = `[CYCLE ${cycle + 1}/${QUEEN_MAX_CYCLES}]\n`;
+    cycleContext += `Spawns: ${spawns.length}\n`;
+    for (const s of spawns) {
+      const spawnMsgs = messages.filter((m) => m.fromAgentId === s.id || m.toAgentId === s.id);
+      const lastMsg = spawnMsgs[spawnMsgs.length - 1];
+      cycleContext += `- ${s.name} (${s.id.substring(0, 8)}) [${s.status}]: ${lastMsg ? lastMsg.content.substring(0, 200) : "No messages yet"}\n`;
+    }
+
+    if (recentMessages.length > 0) {
+      cycleContext += `\nRecent swarm activity:\n`;
+      for (const m of recentMessages.slice(-5)) {
+        cycleContext += `[${m.role}/${m.fromAgentId?.substring(0, 8) || "?"}] ${m.content.substring(0, 150)}\n`;
+      }
+    }
+
+    conversationHistory.push({ role: "user", content: cycleContext });
+
+    try {
+      const { content, tokensUsed } = await chatCompletion(conversationHistory, {
+        model: config.defaultModel,
+        maxTokens: 2048,
+      });
+
+      await storage.updateAgent(queen.id, {
+        tokensUsed: queen.tokensUsed + tokensUsed,
+        messagesProcessed: queen.messagesProcessed + 1,
+      });
+
+      conversationHistory.push({ role: "assistant", content });
+
+      await storage.addMessage({
+        fromAgentId: queen.id,
+        toAgentId: null,
+        swarmId: swarmId,
+        content: `[Cycle ${cycle + 1}] ${content}`,
+        role: "assistant",
+      });
+
+      const spawnBlocks = content.match(/```spawn\n([\s\S]*?)```/g) || [];
+      for (const block of spawnBlocks) {
+        try {
+          const json = block.replace(/```spawn\n?/, "").replace(/```/, "").trim();
+          const parsed = JSON.parse(json);
+          const spawnName = parsed.name || `Spawn-${Date.now()}`;
+          const spawnTask = parsed.task || "Complete assigned work";
+
+          const spawn = await createSpawn({
+            name: spawnName,
+            model: config.defaultModel,
+            systemPrompt: `You are a spawn agent in the "${swarm.name}" swarm. Your SwarmQueen assigned you a specific task. Complete it thoroughly and report back with results. Be concise and focused.\n\nYour task: ${spawnTask}`,
+            parentId: queen.id,
+            swarmId,
+          });
+
+          await storage.updateSwarm(swarmId, { agentIds: [...(currentSwarm.agentIds || []), spawn.id] });
+
+          const spawnResult = await runAgentInference(spawn.id, spawnTask);
+
+          await storage.updateAgent(spawn.id, { status: "completed" });
+
+          await storage.addMessage({
+            fromAgentId: spawn.id,
+            toAgentId: queen.id,
+            swarmId,
+            content: spawnResult,
+            role: "assistant",
+          });
+
+          conversationHistory.push({
+            role: "user",
+            content: `[SPAWN RESULT: ${spawnName} (${spawn.id.substring(0, 8)})]\n${spawnResult.substring(0, 2000)}`,
+          });
+
+          log(`SwarmQueen spawned ${spawnName} and got result (${spawnResult.length} chars)`, "engine");
+
+          await eventBus.emit("system", {
+            message: `SwarmQueen: Spawn "${spawnName}" completed task`,
+            swarmId,
+            spawnId: spawn.id,
+          }, "swarm_queen");
+        } catch (parseErr: any) {
+          log(`SwarmQueen spawn parse error: ${parseErr.message}`, "engine");
+        }
+      }
+
+      const assignBlocks = content.match(/```assign\n([\s\S]*?)```/g) || [];
+      for (const block of assignBlocks) {
+        try {
+          const json = block.replace(/```assign\n?/, "").replace(/```/, "").trim();
+          const parsed = JSON.parse(json);
+          if (parsed.spawn_id && parsed.task) {
+            const result = await runAgentInference(parsed.spawn_id, parsed.task);
+            conversationHistory.push({
+              role: "user",
+              content: `[SPAWN RESULT: ${parsed.spawn_id.substring(0, 8)}]\n${result.substring(0, 2000)}`,
+            });
+          }
+        } catch (parseErr: any) {
+          log(`SwarmQueen assign parse error: ${parseErr.message}`, "engine");
+        }
+      }
+
+      const reviewBlocks = content.match(/```review\n([\s\S]*?)```/g) || [];
+      for (const block of reviewBlocks) {
+        try {
+          const json = block.replace(/```review\n?/, "").replace(/```/, "").trim();
+          const parsed = JSON.parse(json);
+          const verdict = parsed.verdict || "approve";
+          const feedback = parsed.feedback || "";
+          const reviewSpawnId = parsed.spawn_id;
+
+          if (reviewSpawnId) {
+            await storage.addMessage({
+              fromAgentId: queen.id,
+              toAgentId: reviewSpawnId,
+              swarmId,
+              content: `[REVIEW: ${verdict.toUpperCase()}] ${feedback}`,
+              role: "assistant",
+            });
+
+            if (verdict === "reject" || verdict === "revise") {
+              const reviseResult = await runAgentInference(reviewSpawnId, `Your previous work was reviewed. Verdict: ${verdict}. Feedback: ${feedback}. Please revise and resubmit.`);
+              conversationHistory.push({
+                role: "user",
+                content: `[REVISED RESULT: ${reviewSpawnId.substring(0, 8)}]\n${reviseResult.substring(0, 2000)}`,
+              });
+            }
+
+            await eventBus.emit("system", {
+              message: `SwarmQueen reviewed spawn ${reviewSpawnId.substring(0, 8)}: ${verdict}`,
+              swarmId,
+              verdict,
+            }, "swarm_queen");
+          }
+
+          log(`SwarmQueen review: ${verdict} for spawn ${reviewSpawnId?.substring(0, 8)}`, "engine");
+        } catch (parseErr: any) {
+          log(`SwarmQueen review parse error: ${parseErr.message}`, "engine");
+        }
+      }
+
+      const completeMatch = content.match(/```complete\n([\s\S]*?)```/);
+      if (completeMatch) {
+        try {
+          const parsed = JSON.parse(completeMatch[1].trim());
+          const summary = parsed.summary || "Objective completed";
+
+          await storage.updateSwarm(swarmId, {
+            status: "completed",
+            progress: 100,
+            completedAt: new Date().toISOString(),
+          });
+
+          await storage.updateAgent(queen.id, { status: "completed" });
+
+          await storage.addChatMessage({
+            role: "assistant",
+            content: `[SwarmQueen ${queen.name}] Objective COMPLETED: ${summary}`,
+            agentId: queen.id,
+            agentName: queen.name,
+            tokensUsed,
+            autonomous: true,
+          });
+
+          await storage.addThought({
+            content: `Swarm "${swarm.name}" completed by queen. Summary: ${summary}`,
+            source: "swarm_queen",
+            type: "reflection",
+          });
+
+          await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary }, "swarm_queen");
+          log(`SwarmQueen completed swarm ${swarm.name}: ${summary}`, "engine");
+          return;
+        } catch (parseErr: any) {
+          log(`SwarmQueen complete parse error: ${parseErr.message}`, "engine");
+        }
+      }
+
+      const progressPct = Math.min(Math.round(((cycle + 1) / QUEEN_MAX_CYCLES) * 90), 90);
+      await storage.updateSwarm(swarmId, { progress: progressPct });
+
+      await eventBus.emit("system", {
+        message: `SwarmQueen cycle ${cycle + 1}: ${content.substring(0, 150)}`,
+        swarmId,
+        cycle: cycle + 1,
+      }, "swarm_queen");
+
+      if (conversationHistory.length > 30) {
+        const systemMsg = conversationHistory[0];
+        const recent = conversationHistory.slice(-20);
+        conversationHistory.length = 0;
+        conversationHistory.push(systemMsg, ...recent);
+      }
+
+    } catch (err: any) {
+      log(`SwarmQueen cycle ${cycle + 1} error: ${err.message}`, "engine");
+      await storage.addMessage({
+        fromAgentId: queen.id,
+        toAgentId: null,
+        swarmId,
+        content: `[Error in cycle ${cycle + 1}]: ${err.message}`,
+        role: "assistant",
+      });
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, QUEEN_CYCLE_DELAY_MS));
+  }
+
+  const finalSwarm = await storage.getSwarm(swarmId);
+  if (finalSwarm && finalSwarm.status === "active") {
+    await storage.updateSwarm(swarmId, {
+      status: "completed",
+      progress: 100,
+      completedAt: new Date().toISOString(),
+    });
+    await storage.updateAgent(queen.id, { status: "completed" });
+
+    await storage.addChatMessage({
+      role: "assistant",
+      content: `[SwarmQueen ${queen.name}] Maximum cycles reached. Swarm "${swarm.name}" auto-completed. Review spawn outputs for results.`,
+      agentId: queen.id,
+      agentName: queen.name,
+      tokensUsed: 0,
+      autonomous: true,
+    });
+
+    await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary: "Max cycles reached" }, "swarm_queen");
+    log(`SwarmQueen max cycles reached for swarm ${swarm.name}`, "engine");
+  }
 }
 
 export async function runSwarmSteps(swarmId: string): Promise<Swarm> {

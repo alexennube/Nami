@@ -2,6 +2,26 @@ import * as fs from "fs";
 import * as path from "path";
 import { exec, execFile } from "child_process";
 import { log } from "./index";
+import { storage } from "./storage";
+
+type EngineFunctions = {
+  createSwarmWithQueen: (data: { name: string; goal: string; objective: string }) => Promise<any>;
+  createSpawn: (data: { name: string; model: string; systemPrompt: string; parentId: string | null; swarmId: string | null }) => Promise<any>;
+  swarmAction: (swarmId: string, action: string) => Promise<any>;
+  runSwarmQueen: (swarmId: string) => Promise<void>;
+  getSwarmStatus: (swarmId: string) => Promise<string>;
+};
+
+let _engine: EngineFunctions | null = null;
+
+export function registerEngine(engine: EngineFunctions) {
+  _engine = engine;
+}
+
+function getEngine(): EngineFunctions {
+  if (!_engine) throw new Error("Engine not registered. Call registerEngine() first.");
+  return _engine;
+}
 
 const WORKSPACE_ROOT = process.cwd();
 
@@ -627,7 +647,154 @@ const ennubeMcpTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, googleWorkspaceTool, ennubeMcpTool];
+const createSwarmTool: NamiTool = {
+  name: "create_swarm",
+  description: "Create a new swarm (workflow) with an autonomous SwarmQueen. The queen will independently manage the swarm's objective by spawning agents, delegating tasks, monitoring progress, and reviewing results before completing. Pass a clear goal and objective - the queen cannot change her primary objective once set.",
+  category: "system",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      name: {
+        type: "string",
+        description: "Name for the swarm (e.g., 'Data Enrichment Swarm', 'Research Swarm')",
+      },
+      goal: {
+        type: "string",
+        description: "High-level goal of the swarm. This becomes the queen's immutable primary objective.",
+      },
+      objective: {
+        type: "string",
+        description: "Detailed description of what the swarm should accomplish, including any specific requirements, constraints, or success criteria.",
+      },
+      auto_start: {
+        type: "boolean",
+        description: "If true (default), immediately activate the swarm and start the queen's autonomous loop. If false, create in pending state.",
+      },
+    },
+    required: ["name", "goal", "objective"],
+  },
+  execute: async (args) => {
+    const name = args.name as string;
+    const goal = args.goal as string;
+    const objective = args.objective as string;
+    const autoStart = args.auto_start !== false;
+
+    try {
+      const engine = getEngine();
+      const { swarm, queen } = await engine.createSwarmWithQueen({ name, goal, objective });
+
+      let result = `Swarm "${swarm.name}" created successfully.\n- ID: ${swarm.id}\n- Goal: ${swarm.goal}\n- Queen: ${queen.name} (${queen.id})\n- Status: ${swarm.status}`;
+
+      if (autoStart) {
+        await engine.swarmAction(swarm.id, "activate");
+        engine.runSwarmQueen(swarm.id).catch((err: any) => {
+          log(`SwarmQueen autonomous loop error for ${swarm.id}: ${err.message}`, "engine");
+        });
+        result += `\n- Auto-started: Queen is now autonomously working on the objective.`;
+      }
+
+      return result;
+    } catch (err: any) {
+      return `Error creating swarm: ${err.message}`;
+    }
+  },
+};
+
+const manageSwarmTool: NamiTool = {
+  name: "manage_swarm",
+  description: "Manage an existing swarm. Actions: 'status' (get swarm details), 'activate' (start/resume queen), 'pause' (pause queen), 'complete' (force complete), 'list' (list all swarms), 'add_spawn' (manually add a spawn agent to the swarm).",
+  category: "system",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        description: "Action to perform: 'status', 'activate', 'pause', 'complete', 'list', 'add_spawn'",
+        enum: ["status", "activate", "pause", "complete", "list", "add_spawn"],
+      },
+      swarm_id: {
+        type: "string",
+        description: "ID of the swarm (required for all actions except 'list')",
+      },
+      spawn_name: {
+        type: "string",
+        description: "Name for the new spawn agent (only for 'add_spawn' action)",
+      },
+      spawn_prompt: {
+        type: "string",
+        description: "System prompt / instructions for the new spawn (only for 'add_spawn' action)",
+      },
+    },
+    required: ["action"],
+  },
+  execute: async (args) => {
+    const action = args.action as string;
+    const swarmId = args.swarm_id as string;
+
+    try {
+      if (action === "list") {
+        const swarms = await storage.getSwarms();
+        if (swarms.length === 0) return "No swarms exist yet.";
+        return swarms.map((s) => {
+          const agentCount = s.agentIds.length;
+          return `- **${s.name}** (${s.id.substring(0, 8)})\n  Status: ${s.status} | Goal: ${s.goal}\n  Agents: ${agentCount} | Progress: ${s.progress}%`;
+        }).join("\n\n");
+      }
+
+      if (!swarmId) return "Error: swarm_id is required for this action.";
+
+      const engine = getEngine();
+
+      if (action === "status") {
+        return await engine.getSwarmStatus(swarmId);
+      }
+
+      if (action === "activate") {
+        await engine.swarmAction(swarmId, "activate");
+        engine.runSwarmQueen(swarmId).catch((err: any) => {
+          log(`SwarmQueen autonomous loop error for ${swarmId}: ${err.message}`, "engine");
+        });
+        return `Swarm ${swarmId} activated. Queen is now running autonomously.`;
+      }
+
+      if (action === "pause") {
+        await engine.swarmAction(swarmId, "pause");
+        return `Swarm ${swarmId} paused. Queen and spawns paused.`;
+      }
+
+      if (action === "complete") {
+        await engine.swarmAction(swarmId, "complete");
+        return `Swarm ${swarmId} force-completed by Nami.`;
+      }
+
+      if (action === "add_spawn") {
+        const spawnName = args.spawn_name as string || `Spawn-${Date.now()}`;
+        const spawnPrompt = args.spawn_prompt as string || "You are a worker agent. Complete the task assigned to you.";
+        const config = await storage.getConfig();
+        const spawn = await engine.createSpawn({
+          name: spawnName,
+          model: config.defaultModel,
+          systemPrompt: spawnPrompt,
+          parentId: null,
+          swarmId,
+        });
+        const swarm = await storage.getSwarm(swarmId);
+        if (swarm) {
+          await storage.updateSwarm(swarmId, { agentIds: [...swarm.agentIds, spawn.id] });
+        }
+        return `Spawn "${spawn.name}" (${spawn.id}) added to swarm ${swarmId}.`;
+      }
+
+      return `Unknown action: ${action}`;
+    } catch (err: any) {
+      return `Error managing swarm: ${err.message}`;
+    }
+  },
+};
+
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool];
 
 export function getTools(): NamiTool[] {
   return allTools;
