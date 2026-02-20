@@ -31,6 +31,7 @@ import {
   ChevronDown,
   ChevronRight,
   Waypoints,
+  Cpu,
 } from "lucide-react";
 import { useState } from "react";
 import type { EngineStatus, PinnedChat } from "@shared/schema";
@@ -97,7 +98,7 @@ export function AppSidebar() {
         <Link href="/">
           <div className="flex items-center gap-3 cursor-pointer" data-testid="link-home">
             <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary/20 border border-primary/30">
-              <Waypoints className="w-5 h-5 text-primary" />
+              <Cpu className="w-5 h-5 text-primary" />
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-bold tracking-tight">nami</span>
