@@ -53,6 +53,9 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `GET/PUT /api/tools/permissions` - Tool permission configuration
 
 ## Recent Changes
+- 2026-02-20: Added web_browse (Chromium), google_workspace (gogCLI), ennube_mcp (Ennube AI MCP) tools
+- 2026-02-20: Chat history, thoughts, memories now persist to disk (.nami-data/) across restarts
+- 2026-02-20: Heartbeat now always calls LLM; SLEEP no longer floods chat history
 - 2026-02-20: Tool system: file_read, file_write, file_list, shell_exec, self_inspect tools for Nami workspace access
 - 2026-02-20: OpenRouter function calling integration for tool use in chat and heartbeat
 - 2026-02-20: Safety/permission layer for tool execution with blocked paths and configurable access
@@ -71,6 +74,12 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 ## Environment
 - `OPENROUTER_API_KEY` - OpenRouter.ai API key (also configurable via Settings UI for BYOK)
 - `SESSION_SECRET` - Session secret
+- `ENNUBE_MCP_APIKEY` - Ennube AI MCP server API key
+
+## External Tools
+- **Chromium** - Headless browser for web_browse tool (installed via Nix)
+- **gogCLI v0.11.0** - Google Workspace CLI at `.local/bin/gog` (Gmail, Calendar, Drive, Sheets, Docs)
+- **Ennube MCP** - Remote MCP server at `https://dev.ennube.ai/api/tools/mcp`
 
 ## User Preferences
 - Node.js/TypeScript only (CTO requirement for desktop app compatibility)

@@ -1,6 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import { log } from "./index";
 
 const WORKSPACE_ROOT = process.cwd();
@@ -14,7 +14,7 @@ export interface ToolParameter {
 export interface NamiTool {
   name: string;
   description: string;
-  category: "filesystem" | "execution" | "system";
+  category: "filesystem" | "execution" | "system" | "browser" | "google" | "mcp";
   enabled: boolean;
   parameters: {
     type: "object";
@@ -373,7 +373,232 @@ const selfInspectTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool];
+const CHROMIUM_PATH = "/nix/store/zi4f80l169xlmivz8vja8wlphq74qqk0-chromium-125.0.6422.141/bin/chromium";
+const GOG_CLI_PATH = path.join(WORKSPACE_ROOT, ".local/bin/gog");
+
+const webBrowseTool: NamiTool = {
+  name: "web_browse",
+  description: "Browse a web page using Chromium and return the page content as text. Use this to fetch web pages, check URLs, scrape content, or verify sites. Returns the text content of the page.",
+  category: "browser",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      url: {
+        type: "string",
+        description: "The URL to browse (e.g., 'https://example.com')",
+      },
+      screenshot: {
+        type: "string",
+        description: "If 'true', take a screenshot and save to workspace. Defaults to 'false'.",
+      },
+      wait_seconds: {
+        type: "number",
+        description: "Seconds to wait for page to load before capturing. Defaults to 3.",
+      },
+    },
+    required: ["url"],
+  },
+  execute: async (args) => {
+    const url = args.url as string;
+    if (!url) return "Error: Please provide a URL.";
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      return "Error: Invalid URL format.";
+    }
+
+    if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+      return "Error: Only http:// and https:// URLs are supported.";
+    }
+
+    const hostname = parsedUrl.hostname;
+    const blockedPatterns = [/^localhost$/i, /^127\./, /^10\./, /^192\.168\./, /^172\.(1[6-9]|2\d|3[01])\./, /^0\./, /^169\.254\./, /^::1$/, /^fc00:/i, /^fe80:/i, /^metadata\.google/i];
+    if (blockedPatterns.some((p) => p.test(hostname))) {
+      return "Error: Access to internal/private network addresses is blocked.";
+    }
+
+    const waitSeconds = (args.wait_seconds as number) || 3;
+    const wantScreenshot = args.screenshot === "true";
+
+    const chromiumArgs = ["--headless", "--no-sandbox", "--disable-gpu", "--disable-software-rasterizer", "--dump-dom", `--timeout=${waitSeconds * 1000}`, parsedUrl.href];
+
+    return new Promise((resolve) => {
+      execFile(CHROMIUM_PATH, chromiumArgs, { cwd: WORKSPACE_ROOT, timeout: (waitSeconds + 10) * 1000, maxBuffer: 1024 * 1024 }, async (error, stdout, stderr) => {
+        let result = "";
+
+        if (stdout.trim()) {
+          const text = stdout
+            .replace(/<script[\s\S]*?<\/script>/gi, "")
+            .replace(/<style[\s\S]*?<\/style>/gi, "")
+            .replace(/<[^>]+>/g, " ")
+            .replace(/\s+/g, " ")
+            .trim();
+          result = text.length > 8000 ? text.substring(0, 8000) + "\n... (truncated)" : text;
+        }
+
+        if (wantScreenshot) {
+          const screenshotPath = path.join(WORKSPACE_ROOT, ".nami-data", `screenshot-${Date.now()}.png`);
+          const ssArgs = ["--headless", "--no-sandbox", "--disable-gpu", "--disable-software-rasterizer", `--screenshot=${screenshotPath}`, "--window-size=1280,720", parsedUrl.href];
+          execFile(CHROMIUM_PATH, ssArgs, { cwd: WORKSPACE_ROOT, timeout: (waitSeconds + 10) * 1000 }, (ssErr) => {
+            if (!ssErr && fs.existsSync(screenshotPath)) {
+              result += `\n\nScreenshot saved to: ${path.relative(WORKSPACE_ROOT, screenshotPath)}`;
+            }
+            log(`Tool web_browse: ${parsedUrl.href} -> ${result.length} chars`, "tools");
+            resolve(result || "Error: Could not retrieve page content.");
+          });
+        } else {
+          log(`Tool web_browse: ${parsedUrl.href} -> ${result.length} chars`, "tools");
+          resolve(result || "Error: Could not retrieve page content.");
+        }
+      });
+    });
+  },
+};
+
+const googleWorkspaceTool: NamiTool = {
+  name: "google_workspace",
+  description: "Interact with Google Workspace services (Gmail, Calendar, Drive, Contacts, Tasks, Sheets, Docs, Slides) using gogCLI. Run any gog command to access Google services. Requires prior authentication setup.",
+  category: "google",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      command: {
+        type: "string",
+        description: "The gog CLI command to execute (e.g., 'gmail labels list', 'calendar events --max 5', 'drive ls --max 10'). Do NOT include 'gog' prefix.",
+      },
+      json_output: {
+        type: "string",
+        description: "If 'true', adds --json flag for structured output. Defaults to 'false'.",
+      },
+    },
+    required: ["command"],
+  },
+  execute: async (args) => {
+    const command = args.command as string;
+    if (!command) return "Error: Please provide a gog command.";
+
+    if (!fs.existsSync(GOG_CLI_PATH)) {
+      return "Error: gogCLI is not installed. Binary not found at expected path.";
+    }
+
+    const cmdParts = command.split(/\s+/).filter(Boolean);
+    const dangerousPatterns = [/[;&|`$(){}]/, /\.\./];
+    for (const part of cmdParts) {
+      if (dangerousPatterns.some((p) => p.test(part))) {
+        return `Error: Argument contains disallowed characters: '${part}'`;
+      }
+    }
+
+    if (args.json_output === "true") cmdParts.push("--json");
+
+    return new Promise((resolve) => {
+      execFile(GOG_CLI_PATH, cmdParts, { cwd: WORKSPACE_ROOT, timeout: 30000, maxBuffer: 1024 * 512 }, (error, stdout, stderr) => {
+        const output: string[] = [];
+        if (stdout.trim()) output.push(stdout.trim());
+        if (stderr.trim()) output.push(`STDERR: ${stderr.trim()}`);
+        if (error && error.killed) output.push("Error: Command timed out.");
+        else if (error) output.push(`Exit code: ${error.code}`);
+
+        const result = output.join("\n") || "(no output)";
+        log(`Tool google_workspace: '${command}' -> ${result.length} chars`, "tools");
+        resolve(result.length > 5000 ? result.substring(0, 5000) + "\n... (truncated)" : result);
+      });
+    });
+  },
+};
+
+const ennubeMcpTool: NamiTool = {
+  name: "ennube_mcp",
+  description: "Call tools on the Ennube AI MCP server. Ennube provides AI-powered cloud infrastructure, deployment, and management capabilities. Use this to interact with Ennube's tool ecosystem.",
+  category: "mcp",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      method: {
+        type: "string",
+        description: "The MCP method to call: 'tools/list' to see available tools, or 'tools/call' to invoke a specific tool.",
+        enum: ["tools/list", "tools/call"],
+      },
+      tool_name: {
+        type: "string",
+        description: "When method is 'tools/call', the name of the tool to invoke.",
+      },
+      tool_args: {
+        type: "string",
+        description: "When method is 'tools/call', a JSON string of arguments to pass to the tool.",
+      },
+    },
+    required: ["method"],
+  },
+  execute: async (args) => {
+    const apiKey = process.env.ENNUBE_MCP_APIKEY;
+    if (!apiKey) return "Error: ENNUBE_MCP_APIKEY not configured. Set it in environment variables.";
+
+    const method = args.method as string;
+    const mcpUrl = "https://dev.ennube.ai/api/tools/mcp";
+
+    let body: any;
+    if (method === "tools/list") {
+      body = { jsonrpc: "2.0", id: 1, method: "tools/list" };
+    } else if (method === "tools/call") {
+      const toolName = args.tool_name as string;
+      if (!toolName) return "Error: tool_name is required for tools/call method.";
+
+      let toolArgs: Record<string, any> = {};
+      if (args.tool_args) {
+        try {
+          toolArgs = JSON.parse(args.tool_args as string);
+        } catch {
+          return "Error: tool_args must be valid JSON.";
+        }
+      }
+
+      body = {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: toolName, arguments: toolArgs },
+      };
+    } else {
+      return "Error: method must be 'tools/list' or 'tools/call'.";
+    }
+
+    try {
+      const response = await fetch(mcpUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "*/*",
+          "Authorization": `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        return `Error: Ennube MCP returned ${response.status} ${response.statusText}`;
+      }
+
+      const data = await response.json() as any;
+
+      if (data.error) {
+        return `MCP Error: ${data.error.message || JSON.stringify(data.error)}`;
+      }
+
+      const result = JSON.stringify(data.result, null, 2);
+      log(`Tool ennube_mcp: ${method} -> ${result.length} chars`, "tools");
+      return result.length > 5000 ? result.substring(0, 5000) + "\n... (truncated)" : result;
+    } catch (err: any) {
+      return `Error calling Ennube MCP: ${err.message}`;
+    }
+  },
+};
+
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, googleWorkspaceTool, ennubeMcpTool];
 
 export function getTools(): NamiTool[] {
   return allTools;
