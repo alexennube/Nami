@@ -554,6 +554,20 @@ export async function chatWithNami(userMessage: string): Promise<{ content: stri
     autonomous: false,
   });
 
+  const engineState = await storage.getEngineState();
+  if (engineState !== "running") {
+    const reply = `I'm currently **${engineState}**. Start the engine using the controls in the sidebar to chat with me.`;
+    await storage.addChatMessage({
+      role: "assistant",
+      content: reply,
+      agentId: "nami",
+      agentName: "Nami",
+      tokensUsed: 0,
+      autonomous: false,
+    });
+    return { content: reply, tokensUsed: 0 };
+  }
+
   await storage.addThought({
     content: `User message received: "${userMessage.substring(0, 100)}"`,
     source: "nami",
