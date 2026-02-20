@@ -7,6 +7,7 @@ import { testConnection } from "./openrouter";
 import { insertAgentSchema, insertSwarmSchema, insertPinnedChatSchema, skillSchema } from "@shared/schema";
 import { log } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
+import { engineMind } from "./engine-mind";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -429,6 +430,51 @@ export async function registerRoutes(
   app.put("/api/tools/permissions", async (req, res) => {
     const updated = updatePermissions(req.body);
     res.json(updated);
+  });
+
+  app.get("/api/engine-mind/status", async (_req, res) => {
+    res.json(engineMind.getStatus());
+  });
+
+  app.post("/api/engine-mind/initialize", async (_req, res) => {
+    try {
+      const ok = await engineMind.initialize();
+      res.json({ success: ok, message: ok ? "Engine Mind initialized" : "Engine Mind disabled or missing API key" });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post("/api/engine-mind/shutdown", async (_req, res) => {
+    await engineMind.shutdown();
+    res.json({ success: true, message: "Engine Mind shut down" });
+  });
+
+  app.post("/api/engine-mind/reinitialize", async (_req, res) => {
+    try {
+      const ok = await engineMind.reinitialize();
+      res.json({ success: ok, message: ok ? "Engine Mind reinitialized" : "Engine Mind disabled or missing API key" });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  app.post("/api/engine-mind/diagnostic", async (_req, res) => {
+    try {
+      const result = await engineMind.runDiagnostic();
+      res.json({ result });
+    } catch (err: any) {
+      res.status(500).json({ result: `Error: ${err.message}` });
+    }
+  });
+
+  app.post("/api/engine-mind/compact", async (_req, res) => {
+    try {
+      const result = await engineMind.compactChatHistory();
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ compacted: false, error: err.message });
+    }
   });
 
   return httpServer;

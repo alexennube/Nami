@@ -39,7 +39,7 @@ export function AppSidebar() {
   const [location] = useLocation();
   const [chatsOpen, setChatsOpen] = useState(true);
   const [mindOpen, setMindOpen] = useState(false);
-  const isMindPage = location === "/thoughts" || location === "/memory" || location === "/heartbeat" || location === "/skills";
+  const isMindPage = location === "/thoughts" || location === "/memory" || location === "/heartbeat" || location === "/skills" || location === "/engine-mind";
 
   const { data: engineStatus } = useQuery<EngineStatus>({
     queryKey: ["/api/engine/status"],
@@ -267,6 +267,14 @@ export function AppSidebar() {
                       <Link href="/skills" data-testid="link-skills">
                         <Zap className="w-4 h-4" />
                         <span>Skills</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild data-active={location === "/engine-mind"} className="pl-8 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
+                      <Link href="/engine-mind" data-testid="link-engine-mind">
+                        <Cpu className="w-4 h-4" />
+                        <span>Pi Session</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

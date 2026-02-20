@@ -20,13 +20,14 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - **Swarm = Workflow**: A swarm IS the workflow. Steps are embedded in the swarm as either prompt-based or code-based instructions.
 - **Chat Module**: Direct conversational interface with Nami, the primary orchestrator. Main view of the app.
 - **Heartbeat**: Configurable autonomous loop that periodically pings Nami with instructions. Reports < SLEEP > when idle.
-- **Engine Mind**: Thoughts (internal reasoning), Memory (stored context), Heartbeat config
+- **Engine Mind**: Thoughts (internal reasoning), Memory (stored context), Heartbeat config, Pi Session (self-healing, spawn validation, auto-compaction)
 - **Engine State**: RUNNING / PAUSED / STOPPED with Pause/Stop controls in sidebar
 
 ## Key Files
 - `shared/schema.ts` - All TypeScript types and Zod schemas (including Thought, Memory, HeartbeatConfig, EngineState)
 - `server/engine.ts` - Core orchestration engine (EventBus, heartbeat loop, agent/swarm management, chat with Nami)
 - `server/openrouter.ts` - OpenRouter.ai BYOK client
+- `server/engine-mind.ts` - Pi framework Engine Mind wrapper (self-healing, spawn validation, auto-compaction, diagnostics)
 - `server/tools.ts` - Tool registry (file_read, file_write, file_list, shell_exec, self_inspect, web_browse, web_search, google_workspace, ennube_mcp, create_swarm, manage_swarm) with permissions
 - `server/routes.ts` - Express API routes + WebSocket setup
 - `server/storage.ts` - In-memory storage layer with file-based config persistence
@@ -52,8 +53,15 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `GET /api/tools` - List available tools with status
 - `PUT /api/tools/:name/toggle` - Enable/disable individual tools
 - `GET/PUT /api/tools/permissions` - Tool permission configuration
+- `GET /api/engine-mind/status` - Engine Mind session status and stats
+- `POST /api/engine-mind/initialize` - Initialize Pi session
+- `POST /api/engine-mind/shutdown` - Shutdown Pi session
+- `POST /api/engine-mind/reinitialize` - Reinitialize Pi session
+- `POST /api/engine-mind/diagnostic` - Run Engine Mind diagnostic
+- `POST /api/engine-mind/compact` - Trigger chat history compaction
 
 ## Recent Changes
+- 2026-02-20: Engine Mind (Pi framework) integration: server/engine-mind.ts with self-healing executeWithHealing, spawn validation, auto-compaction (40+ msg threshold), diagnostics, Pi Session monitoring page, Engine Mind settings (enable/disable, model selector), API routes (/api/engine-mind/status, initialize, shutdown, reinitialize, diagnostic, compact)
 - 2026-02-20: Pinned chat feature: pin_chat tool for Nami, PinnedChat schema with insert validation, sidebar display with hover-to-unpin, disk persistence
 - 2026-02-20: Removed non-functional New Chat button, replaced with pinned chats in sidebar
 - 2026-02-20: Added web_search tool (Perplexity via OpenRouter) for real-time web search capability

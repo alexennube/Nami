@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Settings2, Key, Cpu, Globe, Save, ExternalLink, Search, Check, Loader2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Settings2, Key, Cpu, Globe, Save, ExternalLink, Search, Check, Loader2, Brain } from "lucide-react";
 import type { NamiConfig } from "@shared/schema";
 
 interface OpenRouterModel {
@@ -34,6 +35,8 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState("");
   const [defaultModel, setDefaultModel] = useState("openai/gpt-4o");
   const [swarmQueenModel, setSwarmQueenModel] = useState("");
+  const [engineMindModel, setEngineMindModel] = useState("");
+  const [engineMindEnabled, setEngineMindEnabled] = useState(false);
   const [siteUrl, setSiteUrl] = useState("https://agentnami.com");
   const [siteName, setSiteName] = useState("AgentNami");
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(10);
@@ -43,12 +46,16 @@ export default function Settings() {
   const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
   const [queenModelSearch, setQueenModelSearch] = useState("");
   const [queenModelDropdownOpen, setQueenModelDropdownOpen] = useState(false);
+  const [mindModelSearch, setMindModelSearch] = useState("");
+  const [mindModelDropdownOpen, setMindModelDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (config) {
       setApiKey(config.openRouterApiKey || "");
       setDefaultModel(config.defaultModel);
       setSwarmQueenModel(config.swarmQueenModel || "");
+      setEngineMindModel(config.engineMindModel || "");
+      setEngineMindEnabled(config.engineMindEnabled || false);
       setSiteUrl(config.siteUrl);
       setSiteName(config.siteName);
       setMaxConcurrentAgents(config.maxConcurrentAgents);
@@ -88,12 +95,30 @@ export default function Settings() {
     return found ? found.name || found.id : swarmQueenModel;
   }, [models, swarmQueenModel]);
 
+  const filteredMindModels = useMemo(() => {
+    if (!models) return [];
+    if (!mindModelSearch.trim()) return models;
+    const q = mindModelSearch.toLowerCase();
+    return models.filter(
+      (m) => m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q))
+    );
+  }, [models, mindModelSearch]);
+
+  const selectedMindModelName = useMemo(() => {
+    if (!engineMindModel) return "Same as default model";
+    if (!models) return engineMindModel;
+    const found = models.find((m) => m.id === engineMindModel);
+    return found ? found.name || found.id : engineMindModel;
+  }, [models, engineMindModel]);
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("PUT", "/api/config", {
         openRouterApiKey: apiKey || undefined,
         defaultModel,
         swarmQueenModel,
+        engineMindModel,
+        engineMindEnabled,
         siteUrl,
         siteName,
         maxConcurrentAgents,
@@ -388,6 +413,92 @@ export default function Settings() {
               max={100}
               data-testid="input-max-agents"
             />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Brain className="w-4 h-4 text-primary" />
+            <CardTitle className="text-sm">Engine Mind (Pi Framework)</CardTitle>
+          </div>
+          <CardDescription className="text-[11px]">
+            Self-healing tool execution, spawn validation, and auto-compaction via Pi agent framework.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Enable Engine Mind</Label>
+            <Switch
+              checked={engineMindEnabled}
+              onCheckedChange={setEngineMindEnabled}
+              data-testid="switch-engine-mind"
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs">Engine Mind Model</Label>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMindModelDropdownOpen(!mindModelDropdownOpen)}
+                className="flex items-center justify-between w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                data-testid="select-mind-model"
+              >
+                <span className="truncate">{selectedMindModelName}</span>
+                <Search className="w-3 h-3 ml-2 shrink-0 opacity-50" />
+              </button>
+              {mindModelDropdownOpen && (
+                <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
+                  <div className="p-2">
+                    <Input
+                      placeholder="Search models..."
+                      value={mindModelSearch}
+                      onChange={(e) => setMindModelSearch(e.target.value)}
+                      className="h-7 text-xs"
+                      autoFocus
+                      data-testid="input-mind-model-search"
+                    />
+                  </div>
+                  <ScrollArea className="max-h-48">
+                    <div className="p-1">
+                      <button
+                        className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-xs hover:bg-accent"
+                        onClick={() => { setEngineMindModel(""); setMindModelDropdownOpen(false); }}
+                      >
+                        {!engineMindModel && <Check className="w-3 h-3" />}
+                        <span className={!engineMindModel ? "" : "ml-5"}>Same as default model</span>
+                      </button>
+                      {modelsLoading ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        </div>
+                      ) : (
+                        filteredMindModels.map((m) => (
+                          <button
+                            key={m.id}
+                            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-xs hover:bg-accent text-left"
+                            onClick={() => { setEngineMindModel(m.id); setMindModelDropdownOpen(false); setMindModelSearch(""); }}
+                          >
+                            {engineMindModel === m.id && <Check className="w-3 h-3 shrink-0" />}
+                            <span className={`truncate ${engineMindModel === m.id ? "" : "ml-5"}`}>{m.name || m.id}</span>
+                            {m.context_length && (
+                              <Badge variant="secondary" className="text-[9px] shrink-0 no-default-active-elevate">
+                                {(m.context_length / 1000).toFixed(0)}k ctx
+                              </Badge>
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
+              )}
+            </div>
+            <span className="text-[10px] text-muted-foreground">
+              {engineMindModel ? <span className="font-mono">{engineMindModel}</span> : "Uses the default model when empty"}
+            </span>
           </div>
         </CardContent>
       </Card>

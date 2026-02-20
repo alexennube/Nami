@@ -18,6 +18,7 @@ import Tools from "@/pages/tools";
 import Activity from "@/pages/activity";
 import SkillsPage from "@/pages/skills";
 import Settings from "@/pages/settings";
+import EngineMindPage from "@/pages/engine-mind";
 
 function Router() {
   return (
@@ -28,6 +29,7 @@ function Router() {
       <Route path="/memory" component={MemoryPage} />
       <Route path="/heartbeat" component={Heartbeat} />
       <Route path="/skills" component={SkillsPage} />
+      <Route path="/engine-mind" component={EngineMindPage} />
       <Route path="/spawns" component={Spawns} />
       <Route path="/swarms" component={Swarms} />
       <Route path="/tools" component={Tools} />

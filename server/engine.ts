@@ -1,6 +1,7 @@
 import { storage } from "./storage";
 import { chatCompletion, type ChatMessage as OpenRouterMessage } from "./openrouter";
 import { log } from "./index";
+import { engineMind } from "./engine-mind";
 import type { Agent, Swarm, NamiEvent, EngineState } from "@shared/schema";
 
 type EventCallback = (event: NamiEvent) => void;
@@ -43,6 +44,10 @@ export async function bootEngine(): Promise<void> {
       startHeartbeat();
     }
 
+    engineMind.initialize().then(ok => {
+      if (ok) log("Engine Mind (Pi) initialized on boot", "engine");
+    }).catch(err => log(`Engine Mind boot error: ${err.message}`, "engine"));
+
     log("Engine auto-booted: RUNNING with heartbeat", "engine");
   } else {
     log(`Engine boot skipped: state is ${engineState}`, "engine");
@@ -59,6 +64,10 @@ export async function startEngine(): Promise<EngineState> {
   if (hbConfig.enabled) {
     startHeartbeat();
   }
+
+  engineMind.initialize().then(ok => {
+    if (ok) log("Engine Mind (Pi) initialized on start", "engine");
+  }).catch(err => log(`Engine Mind start error: ${err.message}`, "engine"));
 
   await storage.addThought({
     content: "Engine initialized. Ready to orchestrate agents and swarms.",
@@ -79,6 +88,7 @@ export async function pauseEngine(): Promise<EngineState> {
 
 export async function stopEngine(): Promise<EngineState> {
   stopHeartbeat();
+  engineMind.shutdown().catch(err => log(`Engine Mind shutdown error: ${err.message}`, "engine"));
   const state = await storage.setEngineState("stopped");
   await eventBus.emit("system", { message: "Engine stopped" }, "nami");
   log("Engine stopped", "engine");
@@ -298,6 +308,22 @@ export async function createSpawn(data: {
   parentId: string | null;
   swarmId: string | null;
 }): Promise<Agent> {
+  if (engineMind.isInitialized()) {
+    try {
+      const validation = await engineMind.validateSpawn(data);
+      if (!validation.valid && validation.issues.length > 0) {
+        log(`Engine Mind flagged spawn "${data.name}": ${validation.issues.join(", ")}`, "engine");
+        await storage.addThought({
+          content: `[Engine Mind] Spawn "${data.name}" validation issues: ${validation.issues.join(", ")}. Suggestions: ${validation.suggestions.join(", ")}`,
+          source: "engine-mind",
+          type: "observation",
+        });
+      }
+    } catch (err: any) {
+      log(`Engine Mind spawn validation error (non-blocking): ${err.message}`, "engine");
+    }
+  }
+
   const agent = await storage.createAgent({
     name: data.name,
     role: "spawn",
@@ -609,6 +635,14 @@ export async function chatWithNami(userMessage: string): Promise<{ content: stri
 
   await eventBus.emit("message_sent", { agentName: "Nami", content: content.substring(0, 200), tokensUsed }, "nami");
   log(`Nami chat: ${tokensUsed} tokens, ${toolCalls?.length || 0} tool calls`, "engine");
+
+  if (engineMind.isInitialized()) {
+    engineMind.compactChatHistory().then(result => {
+      if (result.compacted) {
+        log(`Engine Mind compacted chat: ${result.originalCount} -> ${result.newCount}`, "engine");
+      }
+    }).catch(err => log(`Engine Mind compaction error: ${err.message}`, "engine"));
+  }
 
   return { content, tokensUsed };
 }

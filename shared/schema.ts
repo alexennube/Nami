@@ -197,12 +197,27 @@ export const namiConfigSchema = z.object({
   openRouterApiKey: z.string().optional(),
   defaultModel: z.string().default("openai/gpt-4o"),
   swarmQueenModel: z.string().default(""),
+  engineMindModel: z.string().default(""),
+  engineMindEnabled: z.boolean().default(false),
   siteUrl: z.string().default("https://agentnami.com"),
   siteName: z.string().default("AgentNami"),
   maxConcurrentAgents: z.number().default(10),
   maxTokensPerRequest: z.number().default(4096),
   temperature: z.number().default(0.7),
 });
+
+export const engineMindStatusSchema = z.object({
+  initialized: z.boolean(),
+  sessionActive: z.boolean(),
+  model: z.string(),
+  totalPrompts: z.number().default(0),
+  totalCompactions: z.number().default(0),
+  totalToolExecutions: z.number().default(0),
+  totalSelfHeals: z.number().default(0),
+  lastActivity: z.string().nullable(),
+  errors: z.array(z.string()).default([]),
+});
+export type EngineMindStatus = z.infer<typeof engineMindStatusSchema>;
 export type NamiConfig = z.infer<typeof namiConfigSchema>;
 
 export const systemStatsSchema = z.object({
