@@ -54,6 +54,8 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `GET/PUT /api/tools/permissions` - Tool permission configuration
 
 ## Recent Changes
+- 2026-02-20: Pinned chat feature: pin_chat tool for Nami, PinnedChat schema with insert validation, sidebar display with hover-to-unpin, disk persistence
+- 2026-02-20: Removed non-functional New Chat button, replaced with pinned chats in sidebar
 - 2026-02-20: Added web_search tool (Perplexity via OpenRouter) for real-time web search capability
 - 2026-02-20: Swarms page filter toggle: Active / Completed / Cancelled & Failed tabs with count badges
 - 2026-02-20: Added create_swarm and manage_swarm tools for Nami's LLM function calling

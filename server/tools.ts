@@ -890,7 +890,50 @@ const manageSwarmTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool];
+const pinChatTool: NamiTool = {
+  name: "pin_chat",
+  description: "Pin an important conversation moment for easy reference. Use this when: the user asks to save/remember something, a significant decision is made, a task is completed with important results, or a key milestone is reached. Pinned chats appear in the sidebar for quick access.",
+  category: "system",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      title: {
+        type: "string",
+        description: "Short title for the pinned chat (e.g., 'API Key Setup', 'Swarm Results', 'User Preference')",
+      },
+      summary: {
+        type: "string",
+        description: "Brief summary of what was discussed or decided. Include key details the user would want to reference later.",
+      },
+      category: {
+        type: "string",
+        description: "Category for organization: 'decision', 'result', 'preference', 'milestone', 'reference', or 'general'",
+      },
+    },
+    required: ["title", "summary"],
+  },
+  execute: async (args) => {
+    const title = args.title as string;
+    const summary = args.summary as string;
+    const category = (args.category as string) || "general";
+
+    try {
+      const pin = await storage.addPinnedChat({
+        title,
+        summary,
+        messageId: null,
+        pinnedBy: "nami",
+        category,
+      });
+      return `Pinned: "${title}" (ID: ${pin.id}). This will appear in the sidebar for quick reference.`;
+    } catch (err: any) {
+      return `Error pinning chat: ${err.message}`;
+    }
+  },
+};
+
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, pinChatTool];
 
 export function getTools(): NamiTool[] {
   return allTools;

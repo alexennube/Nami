@@ -1,4 +1,4 @@
-import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, Thought, Memory, Skill, HeartbeatConfig, HeartbeatLog, EngineState } from "@shared/schema";
+import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, PinnedChat, InsertPinnedChat, Thought, Memory, Skill, HeartbeatConfig, HeartbeatLog, EngineState } from "@shared/schema";
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -11,6 +11,7 @@ const CHAT_HISTORY_FILE = path.join(PERSIST_DIR, "chat-history.json");
 const THOUGHTS_FILE = path.join(PERSIST_DIR, "thoughts.json");
 const MEMORIES_FILE = path.join(PERSIST_DIR, "memories.json");
 const SKILLS_FILE = path.join(PERSIST_DIR, "skills.json");
+const PINNED_CHATS_FILE = path.join(PERSIST_DIR, "pinned-chats.json");
 
 function ensurePersistDir() {
   if (!fs.existsSync(PERSIST_DIR)) {
@@ -89,6 +90,10 @@ export interface IStorage {
   updateSkill(id: string, updates: Partial<Skill>): Promise<Skill | undefined>;
   deleteSkill(id: string): Promise<boolean>;
 
+  getPinnedChats(): Promise<PinnedChat[]>;
+  addPinnedChat(pin: InsertPinnedChat): Promise<PinnedChat>;
+  deletePinnedChat(id: string): Promise<boolean>;
+
   getHeartbeatConfig(): Promise<HeartbeatConfig>;
   updateHeartbeatConfig(updates: Partial<HeartbeatConfig>): Promise<HeartbeatConfig>;
 
@@ -108,6 +113,7 @@ export class MemStorage implements IStorage {
   private thoughts: Thought[] = [];
   private memories: Map<string, Memory> = new Map();
   private skills: Map<string, Skill> = new Map();
+  private pinnedChats: Map<string, PinnedChat> = new Map();
   private heartbeatLogs: HeartbeatLog[] = [];
   private heartbeatConfig: HeartbeatConfig;
   private engineState: EngineState;
@@ -156,7 +162,12 @@ export class MemStorage implements IStorage {
       this.skills.set(skill.id, skill);
     }
 
-    console.log(`[storage] Loaded from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState}, chat: ${this.chatHistory.length} msgs, thoughts: ${this.thoughts.length}, memories: ${this.memories.size}, skills: ${this.skills.size})`);
+    const savedPins = loadJson<PinnedChat[]>(PINNED_CHATS_FILE, []);
+    for (const pin of savedPins) {
+      this.pinnedChats.set(pin.id, pin);
+    }
+
+    console.log(`[storage] Loaded from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState}, chat: ${this.chatHistory.length} msgs, thoughts: ${this.thoughts.length}, memories: ${this.memories.size}, skills: ${this.skills.size}, pins: ${this.pinnedChats.size})`);
   }
 
   async getAgents(): Promise<Agent[]> {
@@ -395,6 +406,31 @@ export class MemStorage implements IStorage {
 
   private persistSkills() {
     saveJson(SKILLS_FILE, Array.from(this.skills.values()));
+  }
+
+  async getPinnedChats(): Promise<PinnedChat[]> {
+    return Array.from(this.pinnedChats.values()).sort((a, b) => new Date(b.pinnedAt).getTime() - new Date(a.pinnedAt).getTime());
+  }
+
+  async addPinnedChat(data: InsertPinnedChat): Promise<PinnedChat> {
+    const pin: PinnedChat = {
+      ...data,
+      id: randomUUID(),
+      pinnedAt: new Date().toISOString(),
+    };
+    this.pinnedChats.set(pin.id, pin);
+    this.persistPinnedChats();
+    return pin;
+  }
+
+  async deletePinnedChat(id: string): Promise<boolean> {
+    const result = this.pinnedChats.delete(id);
+    this.persistPinnedChats();
+    return result;
+  }
+
+  private persistPinnedChats() {
+    saveJson(PINNED_CHATS_FILE, Array.from(this.pinnedChats.values()));
   }
 
   async getHeartbeatConfig(): Promise<HeartbeatConfig> {
