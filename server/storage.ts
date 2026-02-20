@@ -1,5 +1,39 @@
 import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, Thought, Memory, HeartbeatConfig, HeartbeatLog, EngineState } from "@shared/schema";
 import { randomUUID } from "crypto";
+import * as fs from "fs";
+import * as path from "path";
+
+const PERSIST_DIR = path.join(process.cwd(), ".nami-data");
+const CONFIG_FILE = path.join(PERSIST_DIR, "config.json");
+const HEARTBEAT_CONFIG_FILE = path.join(PERSIST_DIR, "heartbeat.json");
+const ENGINE_STATE_FILE = path.join(PERSIST_DIR, "engine-state.json");
+
+function ensurePersistDir() {
+  if (!fs.existsSync(PERSIST_DIR)) {
+    fs.mkdirSync(PERSIST_DIR, { recursive: true });
+  }
+}
+
+function saveJson(filePath: string, data: any) {
+  try {
+    ensurePersistDir();
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
+  } catch (err: any) {
+    console.error(`Failed to persist ${filePath}: ${err.message}`);
+  }
+}
+
+function loadJson<T>(filePath: string, fallback: T): T {
+  try {
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, "utf-8");
+      return { ...fallback, ...JSON.parse(raw) };
+    }
+  } catch (err: any) {
+    console.error(`Failed to load ${filePath}: ${err.message}`);
+  }
+  return fallback;
+}
 
 export interface IStorage {
   getAgents(): Promise<Agent[]>;
@@ -57,24 +91,42 @@ export class MemStorage implements IStorage {
   private thoughts: Thought[] = [];
   private memories: Map<string, Memory> = new Map();
   private heartbeatLogs: HeartbeatLog[] = [];
-  private heartbeatConfig: HeartbeatConfig = {
-    enabled: true,
-    intervalSeconds: 30,
-    instruction: "Check on the status of all agents and swarms. If idle, report a sleep state. If active, provide a brief progress update.",
-    maxBeats: 0,
-    totalBeats: 0,
-  };
-  private engineState: EngineState = "running";
-  private config: NamiConfig = {
-    openRouterApiKey: process.env.OPENROUTER_API_KEY || "",
-    defaultModel: "openai/gpt-4o",
-    siteUrl: "https://agentnami.com",
-    siteName: "AgentNami",
-    maxConcurrentAgents: 10,
-    maxTokensPerRequest: 4096,
-    temperature: 0.7,
-  };
+  private heartbeatConfig: HeartbeatConfig;
+  private engineState: EngineState;
+  private config: NamiConfig;
   private startTime = Date.now();
+
+  constructor() {
+    const defaultConfig: NamiConfig = {
+      openRouterApiKey: process.env.OPENROUTER_API_KEY || "",
+      defaultModel: "openai/gpt-4o",
+      siteUrl: "https://agentnami.com",
+      siteName: "AgentNami",
+      maxConcurrentAgents: 10,
+      maxTokensPerRequest: 4096,
+      temperature: 0.7,
+    };
+
+    const defaultHeartbeat: HeartbeatConfig = {
+      enabled: true,
+      intervalSeconds: 30,
+      instruction: "Check on the status of all agents and swarms. If idle, report a sleep state. If active, provide a brief progress update.",
+      maxBeats: 0,
+      totalBeats: 0,
+    };
+
+    this.config = loadJson<NamiConfig>(CONFIG_FILE, defaultConfig);
+    if (!this.config.openRouterApiKey && process.env.OPENROUTER_API_KEY) {
+      this.config.openRouterApiKey = process.env.OPENROUTER_API_KEY;
+    }
+
+    this.heartbeatConfig = loadJson<HeartbeatConfig>(HEARTBEAT_CONFIG_FILE, defaultHeartbeat);
+
+    const savedEngine = loadJson<{ state: EngineState }>(ENGINE_STATE_FILE, { state: "running" });
+    this.engineState = savedEngine.state;
+
+    console.log(`[storage] Loaded config from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState})`);
+  }
 
   async getAgents(): Promise<Agent[]> {
     return Array.from(this.agents.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -171,6 +223,7 @@ export class MemStorage implements IStorage {
 
   async updateConfig(updates: Partial<NamiConfig>): Promise<NamiConfig> {
     this.config = { ...this.config, ...updates };
+    saveJson(CONFIG_FILE, this.config);
     return { ...this.config };
   }
 
@@ -262,6 +315,7 @@ export class MemStorage implements IStorage {
 
   async updateHeartbeatConfig(updates: Partial<HeartbeatConfig>): Promise<HeartbeatConfig> {
     this.heartbeatConfig = { ...this.heartbeatConfig, ...updates };
+    saveJson(HEARTBEAT_CONFIG_FILE, this.heartbeatConfig);
     return { ...this.heartbeatConfig };
   }
 
@@ -284,6 +338,7 @@ export class MemStorage implements IStorage {
 
   async setEngineState(state: EngineState): Promise<EngineState> {
     this.engineState = state;
+    saveJson(ENGINE_STATE_FILE, { state });
     return this.engineState;
   }
 }
