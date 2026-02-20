@@ -606,9 +606,21 @@ const ennubeMcpTool: NamiTool = {
         return `MCP Error: ${data.error.message || JSON.stringify(data.error)}`;
       }
 
+      if (method === "tools/list" && data.result?.tools) {
+        const toolSummaries = data.result.tools.map((t: any) => {
+          const params = t.inputSchema?.properties
+            ? Object.keys(t.inputSchema.properties).join(", ")
+            : "none";
+          return `- **${t.name}**: ${t.description || t.title || "No description"}\n  Parameters: ${params}`;
+        });
+        const summary = `Found ${data.result.tools.length} tools on Ennube MCP:\n\n${toolSummaries.join("\n\n")}`;
+        log(`Tool ennube_mcp: ${method} -> ${data.result.tools.length} tools`, "tools");
+        return summary;
+      }
+
       const result = JSON.stringify(data.result, null, 2);
       log(`Tool ennube_mcp: ${method} -> ${result.length} chars`, "tools");
-      return result.length > 5000 ? result.substring(0, 5000) + "\n... (truncated)" : result;
+      return result.length > 10000 ? result.substring(0, 10000) + "\n... (truncated)" : result;
     } catch (err: any) {
       return `Error calling Ennube MCP: ${err.message}`;
     }
