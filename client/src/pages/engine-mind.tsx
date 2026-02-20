@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Cpu, RefreshCw, Play, Square, Stethoscope, Archive, Loader2 } from "lucide-react";
+import { Waypoints, RefreshCw, Play, Square, Stethoscope, Archive, Loader2 } from "lucide-react";
 import { useState } from "react";
 import type { EngineMindStatus } from "@shared/schema";
 
@@ -99,8 +99,8 @@ export default function EngineMindPage() {
     <div className="p-6 max-w-2xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Cpu className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-bold" data-testid="text-page-title">Soul</h1>
+          <Waypoints className="w-5 h-5 text-primary" />
+          <h1 className="text-lg font-bold" data-testid="text-page-title">Senses</h1>
         </div>
         <Badge variant={status?.initialized ? "default" : "secondary"} data-testid="badge-mind-status">
           {status?.initialized ? "Active" : "Inactive"}
@@ -111,7 +111,7 @@ export default function EngineMindPage() {
         <CardHeader>
           <CardTitle className="text-sm">Session Status</CardTitle>
           <CardDescription className="text-[11px]">
-            Soul session for self-healing, spawn validation, and auto-compaction.
+            Senses session for self-healing, spawn validation, and auto-compaction.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

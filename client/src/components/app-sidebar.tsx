@@ -30,7 +30,7 @@ import {
   Play,
   ChevronDown,
   ChevronRight,
-  Cpu,
+  Waypoints,
 } from "lucide-react";
 import { useState } from "react";
 import type { EngineStatus, PinnedChat } from "@shared/schema";
@@ -97,7 +97,7 @@ export function AppSidebar() {
         <Link href="/">
           <div className="flex items-center gap-3 cursor-pointer" data-testid="link-home">
             <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary/20 border border-primary/30">
-              <Cpu className="w-5 h-5 text-primary" />
+              <Waypoints className="w-5 h-5 text-primary" />
             </div>
             <div className="flex flex-col">
               <span className="text-sm font-bold tracking-tight">nami</span>
@@ -273,8 +273,8 @@ export function AppSidebar() {
                   <SidebarMenuItem>
                     <SidebarMenuButton asChild data-active={location === "/engine-mind"} className="pl-8 data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
                       <Link href="/engine-mind" data-testid="link-engine-mind">
-                        <Cpu className="w-4 h-4" />
-                        <span>Soul</span>
+                        <Waypoints className="w-4 h-4" />
+                        <span>Senses</span>
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

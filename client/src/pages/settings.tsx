@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Switch } from "@/components/ui/switch";
-import { Settings2, Key, Cpu, Globe, Save, ExternalLink, Search, Check, Loader2, Brain } from "lucide-react";
+import { Settings2, Key, Waypoints, Globe, Save, ExternalLink, Search, Check, Loader2, Brain } from "lucide-react";
 import type { NamiConfig } from "@shared/schema";
 
 interface OpenRouterModel {
@@ -207,7 +207,7 @@ export default function Settings() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Cpu className="w-4 h-4 text-primary" />
+            <Waypoints className="w-4 h-4 text-primary" />
             <CardTitle className="text-sm">Model Configuration</CardTitle>
           </div>
           <CardDescription className="text-[11px]">
