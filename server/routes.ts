@@ -432,6 +432,17 @@ export async function registerRoutes(
     res.json(updated);
   });
 
+  app.get("/api/swarms/:id/messages", async (req, res) => {
+    const { id } = req.params;
+    const swarm = await storage.getSwarm(id);
+    if (!swarm) {
+      res.status(404).json({ message: "Swarm not found" });
+      return;
+    }
+    const messages = await storage.getSwarmMessages(id);
+    res.json(messages);
+  });
+
   app.get("/api/engine-mind/status", async (_req, res) => {
     res.json(engineMind.getStatus());
   });

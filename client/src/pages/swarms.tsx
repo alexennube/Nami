@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Network, Plus, Crown, Bot, Play, Pause, Trash2, Target, Code, MessageSquare, ChevronDown, ChevronRight, Zap, CheckCircle2, XCircle } from "lucide-react";
+import { Network, Plus, Crown, Bot, Play, Pause, Trash2, Target, Code, MessageSquare, ChevronDown, ChevronRight, Zap, CheckCircle2, XCircle, ExternalLink } from "lucide-react";
 import type { Swarm, Agent, SwarmStep } from "@shared/schema";
 
 type NewStep = { name: string; type: "prompt" | "code"; instruction: string };
@@ -254,7 +255,9 @@ function SwarmCard({ swarm }: { swarm: Swarm }) {
               <Network className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             </div>
             <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-sm font-medium truncate">{swarm.name}</span>
+              <Link href={`/swarms/${swarm.id}`}>
+                <span className="text-sm font-medium truncate hover:underline cursor-pointer" data-testid={`link-swarm-name-${swarm.id}`}>{swarm.name}</span>
+              </Link>
               <span className="text-[11px] text-muted-foreground truncate">{swarm.agentIds.length} agents</span>
             </div>
           </div>
@@ -305,6 +308,11 @@ function SwarmCard({ swarm }: { swarm: Swarm }) {
         )}
 
         <div className="flex items-center gap-1 mt-3 flex-wrap">
+          <Link href={`/swarms/${swarm.id}`}>
+            <Button size="sm" variant="outline" data-testid={`button-view-swarm-${swarm.id}`}>
+              <ExternalLink className="w-3 h-3 mr-1" /> View
+            </Button>
+          </Link>
           {swarm.status === "pending" && (
             <>
               <Button size="sm" variant="outline" onClick={() => actionMutation.mutate("activate")} disabled={actionMutation.isPending} data-testid={`button-activate-swarm-${swarm.id}`}>

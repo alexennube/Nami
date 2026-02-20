@@ -755,6 +755,14 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
     autonomous: true,
   });
 
+  await storage.addSwarmMessage({
+    swarmId: swarm.id,
+    agentId: queen.id,
+    agentName: queen.name,
+    content: `Starting autonomous work on objective: "${swarm.objective}"\nGoal: ${swarm.goal}`,
+    type: "system",
+  });
+
   const conversationHistory: OpenRouterMessage[] = [
     { role: "system", content: SWARM_QUEEN_SYSTEM_PROMPT(swarm.goal, swarm.objective) },
   ];
@@ -817,6 +825,14 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
         role: "assistant",
       });
 
+      await storage.addSwarmMessage({
+        swarmId,
+        agentId: queen.id,
+        agentName: queen.name,
+        content: content,
+        type: "queen_thinking",
+      });
+
       const spawnBlocks = content.match(/```spawn\n([\s\S]*?)```/g) || [];
       for (const block of spawnBlocks) {
         try {
@@ -835,6 +851,14 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
 
           await storage.updateSwarm(swarmId, { agentIds: [...(currentSwarm.agentIds || []), spawn.id] });
 
+          await storage.addSwarmMessage({
+            swarmId,
+            agentId: queen.id,
+            agentName: queen.name,
+            content: `Created spawn "${spawnName}" to work on: ${spawnTask}`,
+            type: "spawn_created",
+          });
+
           const spawnResult = await runAgentInference(spawn.id, spawnTask);
 
           await storage.updateAgent(spawn.id, { status: "completed" });
@@ -845,6 +869,14 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
             swarmId,
             content: spawnResult,
             role: "assistant",
+          });
+
+          await storage.addSwarmMessage({
+            swarmId,
+            agentId: spawn.id,
+            agentName: spawnName,
+            content: spawnResult,
+            type: "spawn_result",
           });
 
           conversationHistory.push({
@@ -899,6 +931,15 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
               role: "assistant",
             });
 
+            const reviewedSpawn = await storage.getAgent(reviewSpawnId);
+            await storage.addSwarmMessage({
+              swarmId,
+              agentId: queen.id,
+              agentName: queen.name,
+              content: `Reviewed ${reviewedSpawn?.name || reviewSpawnId.substring(0, 8)}: ${verdict.toUpperCase()}${feedback ? ` - ${feedback}` : ""}`,
+              type: "queen_review",
+            });
+
             if (verdict === "reject" || verdict === "revise") {
               const reviseResult = await runAgentInference(reviewSpawnId, `Your previous work was reviewed. Verdict: ${verdict}. Feedback: ${feedback}. Please revise and resubmit.`);
               conversationHistory.push({
@@ -943,6 +984,14 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
             autonomous: true,
           });
 
+          await storage.addSwarmMessage({
+            swarmId,
+            agentId: queen.id,
+            agentName: queen.name,
+            content: `Objective COMPLETED: ${summary}`,
+            type: "completion",
+          });
+
           await storage.addThought({
             content: `Swarm "${swarm.name}" completed by queen. Summary: ${summary}`,
             source: "swarm_queen",
@@ -982,6 +1031,13 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
         content: `[Error in cycle ${cycle + 1}]: ${err.message}`,
         role: "assistant",
       });
+      await storage.addSwarmMessage({
+        swarmId,
+        agentId: queen.id,
+        agentName: queen.name,
+        content: `Error in cycle ${cycle + 1}: ${err.message}`,
+        type: "error",
+      });
     }
 
     await new Promise((resolve) => setTimeout(resolve, QUEEN_CYCLE_DELAY_MS));
@@ -1003,6 +1059,14 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
       agentName: queen.name,
       tokensUsed: 0,
       autonomous: true,
+    });
+
+    await storage.addSwarmMessage({
+      swarmId,
+      agentId: queen.id,
+      agentName: queen.name,
+      content: `Maximum cycles reached. Auto-completed swarm "${swarm.name}".`,
+      type: "completion",
     });
 
     await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary: "Max cycles reached" }, "swarm_queen");

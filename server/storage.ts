@@ -1,4 +1,4 @@
-import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, PinnedChat, InsertPinnedChat, Thought, Memory, Skill, HeartbeatConfig, HeartbeatLog, EngineState } from "@shared/schema";
+import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, PinnedChat, InsertPinnedChat, Thought, Memory, Skill, HeartbeatConfig, HeartbeatLog, EngineState, SwarmMessage } from "@shared/schema";
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -10,6 +10,7 @@ const ENGINE_STATE_FILE = path.join(PERSIST_DIR, "engine-state.json");
 const CHAT_HISTORY_FILE = path.join(PERSIST_DIR, "chat-history.json");
 const THOUGHTS_FILE = path.join(PERSIST_DIR, "thoughts.json");
 const MEMORIES_FILE = path.join(PERSIST_DIR, "memories.json");
+const SWARM_MESSAGES_FILE = path.join(PERSIST_DIR, "swarm-messages.json");
 const SKILLS_FILE = path.join(PERSIST_DIR, "skills.json");
 const PINNED_CHATS_FILE = path.join(PERSIST_DIR, "pinned-chats.json");
 
@@ -94,6 +95,9 @@ export interface IStorage {
   addPinnedChat(pin: InsertPinnedChat): Promise<PinnedChat>;
   deletePinnedChat(id: string): Promise<boolean>;
 
+  getSwarmMessages(swarmId: string): Promise<SwarmMessage[]>;
+  addSwarmMessage(message: Omit<SwarmMessage, "id" | "timestamp">): Promise<SwarmMessage>;
+
   getHeartbeatConfig(): Promise<HeartbeatConfig>;
   updateHeartbeatConfig(updates: Partial<HeartbeatConfig>): Promise<HeartbeatConfig>;
 
@@ -114,6 +118,7 @@ export class MemStorage implements IStorage {
   private memories: Map<string, Memory> = new Map();
   private skills: Map<string, Skill> = new Map();
   private pinnedChats: Map<string, PinnedChat> = new Map();
+  private swarmMessages: SwarmMessage[];
   private heartbeatLogs: HeartbeatLog[] = [];
   private heartbeatConfig: HeartbeatConfig;
   private engineState: EngineState;
@@ -151,6 +156,7 @@ export class MemStorage implements IStorage {
 
     this.chatHistory = loadJson<ChatMessage[]>(CHAT_HISTORY_FILE, []);
     this.thoughts = loadJson<Thought[]>(THOUGHTS_FILE, []);
+    this.swarmMessages = loadJson<SwarmMessage[]>(SWARM_MESSAGES_FILE, []);
 
     const savedMemories = loadJson<Memory[]>(MEMORIES_FILE, []);
     for (const mem of savedMemories) {
@@ -431,6 +437,22 @@ export class MemStorage implements IStorage {
 
   private persistPinnedChats() {
     saveJson(PINNED_CHATS_FILE, Array.from(this.pinnedChats.values()));
+  }
+
+  async getSwarmMessages(swarmId: string): Promise<SwarmMessage[]> {
+    return this.swarmMessages.filter((m) => m.swarmId === swarmId);
+  }
+
+  async addSwarmMessage(data: Omit<SwarmMessage, "id" | "timestamp">): Promise<SwarmMessage> {
+    const msg: SwarmMessage = { ...data, id: randomUUID(), timestamp: new Date().toISOString() };
+    this.swarmMessages.push(msg);
+    if (this.swarmMessages.length > 5000) this.swarmMessages = this.swarmMessages.slice(-5000);
+    this.persistSwarmMessages();
+    return msg;
+  }
+
+  private persistSwarmMessages() {
+    saveJson(SWARM_MESSAGES_FILE, this.swarmMessages);
   }
 
   async getHeartbeatConfig(): Promise<HeartbeatConfig> {

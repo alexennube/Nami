@@ -94,6 +94,17 @@ export const agentMessageSchema = z.object({
 });
 export type AgentMessage = z.infer<typeof agentMessageSchema>;
 
+export const swarmMessageSchema = z.object({
+  id: z.string(),
+  swarmId: z.string(),
+  agentId: z.string().nullable(),
+  agentName: z.string(),
+  content: z.string(),
+  type: z.enum(["queen_thinking", "spawn_created", "spawn_result", "queen_review", "queen_decision", "system", "error", "completion"]),
+  timestamp: z.string(),
+});
+export type SwarmMessage = z.infer<typeof swarmMessageSchema>;
+
 export const chatMessageSchema = z.object({
   id: z.string(),
   role: z.enum(["user", "assistant"]),
