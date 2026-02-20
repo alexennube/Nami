@@ -7,6 +7,9 @@ const PERSIST_DIR = path.join(process.cwd(), ".nami-data");
 const CONFIG_FILE = path.join(PERSIST_DIR, "config.json");
 const HEARTBEAT_CONFIG_FILE = path.join(PERSIST_DIR, "heartbeat.json");
 const ENGINE_STATE_FILE = path.join(PERSIST_DIR, "engine-state.json");
+const CHAT_HISTORY_FILE = path.join(PERSIST_DIR, "chat-history.json");
+const THOUGHTS_FILE = path.join(PERSIST_DIR, "thoughts.json");
+const MEMORIES_FILE = path.join(PERSIST_DIR, "memories.json");
 
 function ensurePersistDir() {
   if (!fs.existsSync(PERSIST_DIR)) {
@@ -27,12 +30,19 @@ function loadJson<T>(filePath: string, fallback: T): T {
   try {
     if (fs.existsSync(filePath)) {
       const raw = fs.readFileSync(filePath, "utf-8");
-      return { ...fallback, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(fallback)) return parsed as T;
+      return { ...fallback, ...parsed };
     }
   } catch (err: any) {
     console.error(`Failed to load ${filePath}: ${err.message}`);
   }
   return fallback;
+}
+
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+function debouncedSave(filePath: string, getData: () => any) {
+  saveJson(filePath, getData());
 }
 
 export interface IStorage {
@@ -125,7 +135,15 @@ export class MemStorage implements IStorage {
     const savedEngine = loadJson<{ state: EngineState }>(ENGINE_STATE_FILE, { state: "running" });
     this.engineState = savedEngine.state;
 
-    console.log(`[storage] Loaded config from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState})`);
+    this.chatHistory = loadJson<ChatMessage[]>(CHAT_HISTORY_FILE, []);
+    this.thoughts = loadJson<Thought[]>(THOUGHTS_FILE, []);
+
+    const savedMemories = loadJson<Memory[]>(MEMORIES_FILE, []);
+    for (const mem of savedMemories) {
+      this.memories.set(mem.id, mem);
+    }
+
+    console.log(`[storage] Loaded from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState}, chat: ${this.chatHistory.length} msgs, thoughts: ${this.thoughts.length}, memories: ${this.memories.size})`);
   }
 
   async getAgents(): Promise<Agent[]> {
@@ -263,11 +281,17 @@ export class MemStorage implements IStorage {
     const msg: ChatMessage = { ...data, id: randomUUID(), timestamp: new Date().toISOString() };
     this.chatHistory.push(msg);
     if (this.chatHistory.length > 200) this.chatHistory = this.chatHistory.slice(-200);
+    this.persistChat();
     return msg;
   }
 
   async clearChatHistory(): Promise<void> {
     this.chatHistory = [];
+    this.persistChat();
+  }
+
+  private persistChat() {
+    saveJson(CHAT_HISTORY_FILE, this.chatHistory);
   }
 
   async getThoughts(): Promise<Thought[]> {
@@ -278,11 +302,17 @@ export class MemStorage implements IStorage {
     const thought: Thought = { ...data, id: randomUUID(), timestamp: new Date().toISOString() };
     this.thoughts.push(thought);
     if (this.thoughts.length > 500) this.thoughts = this.thoughts.slice(-500);
+    this.persistThoughts();
     return thought;
   }
 
   async clearThoughts(): Promise<void> {
     this.thoughts = [];
+    this.persistThoughts();
+  }
+
+  private persistThoughts() {
+    saveJson(THOUGHTS_FILE, this.thoughts);
   }
 
   async getMemories(): Promise<Memory[]> {
@@ -294,6 +324,7 @@ export class MemStorage implements IStorage {
     const now = new Date().toISOString();
     const memory: Memory = { ...data, id, createdAt: now, lastAccessedAt: now };
     this.memories.set(id, memory);
+    this.persistMemories();
     return memory;
   }
 
@@ -302,11 +333,18 @@ export class MemStorage implements IStorage {
     if (!memory) return undefined;
     const updated = { ...memory, ...updates };
     this.memories.set(id, updated);
+    this.persistMemories();
     return updated;
   }
 
   async deleteMemory(id: string): Promise<boolean> {
-    return this.memories.delete(id);
+    const result = this.memories.delete(id);
+    this.persistMemories();
+    return result;
+  }
+
+  private persistMemories() {
+    saveJson(MEMORIES_FILE, Array.from(this.memories.values()));
   }
 
   async getHeartbeatConfig(): Promise<HeartbeatConfig> {
