@@ -4,7 +4,6 @@ import { rm, readFile } from "fs/promises";
 
 const allowlist = [
   "express",
-  "openai",
   "ws",
   "zod",
 ];
