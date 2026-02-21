@@ -259,7 +259,7 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  const SKILLS_FILE_PATH = path.join(process.cwd(), "Skills.md");
+  const SKILLS_FILE_PATH = path.join(process.cwd(), "skills.md");
 
   app.get("/api/skills/file", async (_req, res) => {
     try {

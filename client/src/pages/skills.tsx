@@ -55,12 +55,12 @@ export default function SkillsPage() {
         <div>
           <h1 className="text-lg font-semibold flex items-center gap-2" data-testid="text-skills-title">
             <Zap className="w-4 h-4" />
-            Skills.md
+            skills.md
           </h1>
           <p className="text-xs text-muted-foreground">
             {data?.updatedAt
               ? `Last saved ${new Date(data.updatedAt).toLocaleString()}`
-              : "No file yet — start writing to create Skills.md"}
+              : "No file yet — start writing to create skills.md"}
           </p>
         </div>
         <Button
