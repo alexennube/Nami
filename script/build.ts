@@ -1,6 +1,6 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
-import { rm, readFile } from "fs/promises";
+import { rm, readFile, writeFile } from "fs/promises";
 
 const allowlist = [
   "express",
@@ -26,15 +26,21 @@ async function buildAll() {
     entryPoints: ["server/index.ts"],
     platform: "node",
     bundle: true,
-    format: "cjs",
-    outfile: "dist/index.cjs",
+    format: "esm",
+    outfile: "dist/index.mjs",
     define: {
       "process.env.NODE_ENV": '"production"',
+    },
+    banner: {
+      js: 'import { createRequire } from "module"; import { fileURLToPath as __bundled_fileURLToPath } from "url"; import { dirname as __bundled_dirname } from "path"; const require = createRequire(import.meta.url); const __filename = __bundled_fileURLToPath(import.meta.url); const __dirname = __bundled_dirname(__filename);',
     },
     minify: true,
     external: externals,
     logLevel: "info",
   });
+
+  await writeFile("dist/index.cjs", 'import("./index.mjs");\n');
+  console.log("wrote dist/index.cjs wrapper");
 }
 
 buildAll().catch((err) => {
