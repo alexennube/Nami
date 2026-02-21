@@ -43,7 +43,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `POST /api/swarms/:id/run` - Execute swarm workflow steps
 - `GET/POST/DELETE /api/thoughts` - Nami's internal reasoning log
 - `GET/POST/DELETE /api/memories` - Stored context and knowledge
-- `GET/POST/PUT/DELETE /api/skills` - Skill documents (markdown reference material)
+- `GET/PUT /api/skills/file` - Skills.md single-file read/write
 - `GET/POST/PUT/DELETE /api/docs` - Documentation pages (agent-writable knowledge base)
 - `GET/PUT /api/heartbeat` - Heartbeat configuration
 - `POST /api/engine/start|pause|stop` - Engine state control

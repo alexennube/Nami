@@ -1,6 +1,8 @@
 import type { Express } from "express";
 import { type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import fs from "fs";
+import path from "path";
 import { storage } from "./storage";
 import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
@@ -257,44 +259,34 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  app.get("/api/skills", async (_req, res) => {
-    const skills = await storage.getSkills();
-    res.json(skills);
-  });
+  const SKILLS_FILE_PATH = path.join(process.cwd(), "Skills.md");
 
-  app.get("/api/skills/:id", async (req, res) => {
-    const skill = await storage.getSkill(req.params.id);
-    if (!skill) return res.status(404).json({ message: "Skill not found" });
-    res.json(skill);
-  });
-
-  const insertSkillSchema = skillSchema.pick({ name: true, content: true, category: true });
-
-  app.post("/api/skills", async (req, res) => {
+  app.get("/api/skills/file", async (_req, res) => {
     try {
-      const data = insertSkillSchema.parse(req.body);
-      const skill = await storage.addSkill(data);
-      res.status(201).json(skill);
+      if (fs.existsSync(SKILLS_FILE_PATH)) {
+        const content = fs.readFileSync(SKILLS_FILE_PATH, "utf-8");
+        const stats = fs.statSync(SKILLS_FILE_PATH);
+        res.json({ content, updatedAt: stats.mtime.toISOString() });
+      } else {
+        res.json({ content: "", updatedAt: null });
+      }
     } catch (error: any) {
-      res.status(400).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
   });
 
-  app.put("/api/skills/:id", async (req, res) => {
+  app.put("/api/skills/file", async (req, res) => {
     try {
-      const updates = insertSkillSchema.partial().parse(req.body);
-      const skill = await storage.updateSkill(req.params.id, updates);
-      if (!skill) return res.status(404).json({ message: "Skill not found" });
-      res.json(skill);
+      const { content } = req.body;
+      if (typeof content !== "string") {
+        return res.status(400).json({ message: "content must be a string" });
+      }
+      fs.writeFileSync(SKILLS_FILE_PATH, content, "utf-8");
+      const stats = fs.statSync(SKILLS_FILE_PATH);
+      res.json({ content, updatedAt: stats.mtime.toISOString() });
     } catch (error: any) {
-      res.status(400).json({ message: error.message });
+      res.status(500).json({ message: error.message });
     }
-  });
-
-  app.delete("/api/skills/:id", async (req, res) => {
-    const deleted = await storage.deleteSkill(req.params.id);
-    if (!deleted) return res.status(404).json({ message: "Skill not found" });
-    res.json({ success: true });
   });
 
   app.get("/api/docs", async (_req, res) => {
