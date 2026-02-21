@@ -4,6 +4,7 @@ import { rm, readFile, writeFile } from "fs/promises";
 
 const allowlist = [
   "express",
+  "cookie-parser",
   "ws",
   "zod",
 ];

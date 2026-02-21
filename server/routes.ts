@@ -5,7 +5,7 @@ import { storage } from "./storage";
 import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
 import { insertAgentSchema, insertSwarmSchema, insertPinnedChatSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
-import { log } from "./index";
+import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
 import { engineMind } from "./engine-mind";
 
@@ -17,7 +17,16 @@ export async function registerRoutes(
   const wss = new WebSocketServer({ server: httpServer, path: "/ws" });
   const clients = new Set<WebSocket>();
 
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, req) => {
+    const cookieHeader = req.headers.cookie || "";
+    const sessionCookie = cookieHeader.split(";").map(c => c.trim()).find(c => c.startsWith("nami_session="));
+    const token = sessionCookie?.split("=")[1];
+
+    if (!token || !activeSessions.has(hashToken(token))) {
+      ws.close(4001, "Unauthorized");
+      return;
+    }
+
     clients.add(ws);
     log("WebSocket client connected", "ws");
     ws.on("close", () => clients.delete(ws));

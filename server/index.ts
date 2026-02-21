@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import cookieParser from "cookie-parser";
+import { randomBytes, createHash } from "crypto";
 
 const app = express();
 const httpServer = createServer(app);
@@ -21,6 +23,80 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+app.use(cookieParser());
+
+export const activeSessions = new Set<string>();
+
+export function getActiveSessions() {
+  return activeSessions;
+}
+
+function generateToken(): string {
+  return randomBytes(32).toString("hex");
+}
+
+function hashToken(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+app.post("/api/auth/login", (req: Request, res: Response) => {
+  const { username, password } = req.body;
+  const validUser = process.env.NAMI_USERNAME;
+  const validPass = process.env.NAMI_PASSWORD;
+
+  if (!validUser || !validPass) {
+    return res.status(500).json({ message: "Authentication not configured" });
+  }
+
+  if (username === validUser && password === validPass) {
+    const token = generateToken();
+    const hashed = hashToken(token);
+    activeSessions.add(hashed);
+    res.cookie("nami_session", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return res.json({ ok: true });
+  }
+
+  return res.status(401).json({ message: "Invalid credentials" });
+});
+
+app.post("/api/auth/logout", (_req: Request, res: Response) => {
+  const token = _req.cookies?.nami_session;
+  if (token) {
+    activeSessions.delete(hashToken(token));
+  }
+  res.clearCookie("nami_session");
+  return res.json({ ok: true });
+});
+
+app.get("/api/auth/check", (req: Request, res: Response) => {
+  const token = req.cookies?.nami_session;
+  if (token && activeSessions.has(hashToken(token))) {
+    return res.json({ authenticated: true });
+  }
+  return res.status(401).json({ authenticated: false });
+});
+
+export { hashToken };
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith("/api/auth/")) {
+    return next();
+  }
+
+  if (req.path.startsWith("/api/")) {
+    const token = req.cookies?.nami_session;
+    if (!token || !activeSessions.has(hashToken(token))) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+  }
+
+  next();
+});
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {

@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
@@ -22,6 +23,7 @@ import EngineMindPage from "@/pages/engine-mind";
 import SwarmDetail from "@/pages/swarm-detail";
 import UsagePage from "@/pages/usage";
 import DocsPage from "@/pages/docs";
+import LoginPage from "@/pages/login";
 
 function Router() {
   return (
@@ -68,13 +70,40 @@ function AppContent() {
   );
 }
 
+function AuthGate() {
+  const [authKey, setAuthKey] = useState(0);
+  const { data, isLoading } = useQuery<{ authenticated: boolean } | null>({
+    queryKey: ["/api/auth/check", authKey],
+    queryFn: async () => {
+      const res = await fetch("/api/auth/check", { credentials: "include" });
+      if (res.status === 401) return null;
+      return res.json();
+    },
+    retry: false,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: "#00ff41", borderTopColor: "transparent" }} />
+      </div>
+    );
+  }
+
+  if (!data?.authenticated) {
+    return <LoginPage onLogin={() => setAuthKey((k) => k + 1)} />;
+  }
+
+  return <AppContent />;
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider>
           <Toaster />
-          <AppContent />
+          <AuthGate />
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>
