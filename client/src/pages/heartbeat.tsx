@@ -54,7 +54,7 @@ export default function Heartbeat() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-6 p-6 max-w-[700px]">
+      <div className="flex flex-col gap-4 md:gap-6 p-3 md:p-6 max-w-[700px]">
         <Skeleton className="h-8 w-48" />
         <Card><CardContent className="p-6"><Skeleton className="h-48 w-full" /></CardContent></Card>
       </div>
@@ -62,9 +62,9 @@ export default function Heartbeat() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-[700px]">
+    <div className="flex flex-col gap-4 md:gap-6 p-3 md:p-6 max-w-[700px]">
       <div>
-        <h1 className="text-lg font-semibold" data-testid="text-heartbeat-title">Heartbeat</h1>
+        <h1 className="text-base md:text-lg font-semibold" data-testid="text-heartbeat-title">Heartbeat</h1>
         <p className="text-xs text-muted-foreground">Configure Nami's autonomous heartbeat loop</p>
       </div>
 

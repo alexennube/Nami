@@ -151,7 +151,7 @@ export default function Settings() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col gap-6 p-6 max-w-[800px]">
+      <div className="flex flex-col gap-4 md:gap-6 p-3 md:p-6 max-w-[800px]">
         <Skeleton className="h-8 w-48" />
         {[...Array(3)].map((_, i) => (
           <Card key={i}><CardContent className="p-6"><Skeleton className="h-32 w-full" /></CardContent></Card>
@@ -161,9 +161,9 @@ export default function Settings() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-[800px]">
+    <div className="flex flex-col gap-4 md:gap-6 p-3 md:p-6 max-w-[800px]">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight" data-testid="text-settings-title">Settings</h1>
+        <h1 className="text-base md:text-xl font-semibold tracking-tight" data-testid="text-settings-title">Settings</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Configure Nami's orchestration parameters</p>
       </div>
 

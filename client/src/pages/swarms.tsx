@@ -100,7 +100,7 @@ function CreateSwarmDialog() {
           Create Swarm
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-[calc(100vw-2rem)] md:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create New Swarm</DialogTitle>
           <DialogDescription>A swarm coordinates agents toward a goal. Define prompt-based or code-based workflow steps, or leave empty and let Nami manage it.</DialogDescription>
@@ -491,10 +491,10 @@ export default function Swarms() {
   const filtered = swarms ? filterSwarms(swarms, filter) : [];
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-[1400px]">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+    <div className="flex flex-col gap-4 md:gap-6 p-3 md:p-6 max-w-[1400px]">
+      <div className="flex items-start justify-between gap-2 md:gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight" data-testid="text-swarms-title">Swarms</h1>
+          <h1 className="text-base md:text-xl font-semibold tracking-tight" data-testid="text-swarms-title">Swarms</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Coordinate agents with embedded workflow steps</p>
         </div>
         <CreateSwarmDialog />
@@ -504,7 +504,7 @@ export default function Swarms() {
         type="single"
         value={filter}
         onValueChange={(v) => { if (v) setFilter(v as FilterTab); }}
-        className="justify-start"
+        className="justify-start flex-wrap"
         data-testid="toggle-swarm-filter"
       >
         <ToggleGroupItem value="active" aria-label="Active swarms" className="gap-1.5 text-xs" data-testid="toggle-filter-active">

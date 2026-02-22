@@ -56,9 +56,9 @@ export default function Activity() {
   const { data: events, isLoading } = useQuery<NamiEvent[]>({ queryKey: ["/api/events"] });
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-[1000px]">
+    <div className="flex flex-col gap-4 md:gap-6 p-3 md:p-6 max-w-[1000px]">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight" data-testid="text-activity-title">Activity Log</h1>
+        <h1 className="text-base md:text-xl font-semibold tracking-tight" data-testid="text-activity-title">Activity Log</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Real-time event stream from all agents and swarms</p>
       </div>
 

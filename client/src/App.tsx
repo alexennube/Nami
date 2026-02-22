@@ -8,6 +8,7 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { useNamiEvents } from "@/hooks/use-nami-events";
+import { Cpu, Menu } from "lucide-react";
 import NotFound from "@/pages/not-found";
 import Chat from "@/pages/chat";
 import Thoughts from "@/pages/thoughts";
@@ -61,6 +62,17 @@ function AppContent() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
+          <header className="flex items-center gap-3 px-3 py-2 border-b md:hidden">
+            <SidebarTrigger data-testid="button-mobile-menu">
+              <Menu className="w-5 h-5" />
+            </SidebarTrigger>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center w-6 h-6 rounded bg-primary/20 border border-primary/30">
+                <Cpu className="w-3.5 h-3.5 text-primary" />
+              </div>
+              <span className="text-sm font-bold tracking-tight">nami</span>
+            </div>
+          </header>
           <main className="flex-1 overflow-auto">
             <Router />
           </main>

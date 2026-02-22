@@ -89,7 +89,7 @@ export default function DocsPage() {
 
   if (selectedSlug && selectedDoc) {
     return (
-      <div className="p-6 max-w-4xl mx-auto" data-testid="page-doc-detail">
+      <div className="p-3 md:p-6 max-w-4xl mx-auto" data-testid="page-doc-detail">
         <div className="flex items-center gap-3 mb-6">
           <Button variant="ghost" size="sm" onClick={() => { setSelectedSlug(null); setEditing(false); }} data-testid="button-back-docs">
             <ArrowLeft className="w-4 h-4 mr-1" />
@@ -143,13 +143,13 @@ export default function DocsPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6" data-testid="page-docs">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="p-3 md:p-6 max-w-4xl mx-auto space-y-4 md:space-y-6" data-testid="page-docs">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 md:gap-3">
           <div className="flex items-center justify-center w-8 h-8 rounded-md bg-primary/20 border border-primary/30">
             <FileText className="w-4 h-4 text-primary" />
           </div>
-          <h1 className="text-lg font-bold tracking-tight" data-testid="text-docs-title">Documentation</h1>
+          <h1 className="text-base md:text-lg font-bold tracking-tight" data-testid="text-docs-title">Documentation</h1>
           <Badge variant="secondary" className="text-[10px]">{docs?.length || 0} pages</Badge>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -159,7 +159,7 @@ export default function DocsPage() {
               New Page
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-2xl">
+          <DialogContent className="max-w-[calc(100vw-2rem)] md:max-w-2xl">
             <DialogHeader>
               <DialogTitle>Create Documentation Page</DialogTitle>
             </DialogHeader>
@@ -190,17 +190,17 @@ export default function DocsPage() {
           <div className="space-y-2">
             {docs.map((doc) => (
               <Card key={doc.slug} className="cursor-pointer transition-colors" onClick={() => setSelectedSlug(doc.slug)} data-testid={`card-doc-${doc.slug}`}>
-                <CardContent className="p-4 flex items-center gap-4">
-                  <FileText className="w-5 h-5 text-muted-foreground shrink-0" />
+                <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
+                  <FileText className="w-5 h-5 text-muted-foreground shrink-0 hidden md:block" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{doc.title}</p>
-                    <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5">
+                    <div className="flex items-center gap-2 md:gap-3 text-[10px] text-muted-foreground mt-0.5 flex-wrap">
                       <Badge variant="secondary" className="text-[10px]">{doc.slug}</Badge>
                       <span className="flex items-center gap-1"><User className="w-3 h-3" />{doc.lastEditedBy}</span>
-                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{new Date(doc.updatedAt).toLocaleDateString()}</span>
+                      <span className="flex items-center gap-1 hidden md:flex"><Clock className="w-3 h-3" />{new Date(doc.updatedAt).toLocaleDateString()}</span>
                     </div>
                   </div>
-                  <p className="text-xs text-muted-foreground max-w-[40%] truncate">{doc.content.substring(0, 100)}</p>
+                  <p className="text-xs text-muted-foreground max-w-[40%] truncate hidden md:block">{doc.content.substring(0, 100)}</p>
                 </CardContent>
               </Card>
             ))}

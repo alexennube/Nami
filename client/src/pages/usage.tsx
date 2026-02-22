@@ -52,9 +52,9 @@ export default function UsagePage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-4">
+      <div className="p-3 md:p-6 space-y-4">
         <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
           <Skeleton className="h-24" />
@@ -67,13 +67,13 @@ export default function UsagePage() {
   const s = summary || { totalCost: 0, totalTokens: 0, totalCalls: 0, bySource: {}, byModel: {}, bySwarm: {} };
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto" data-testid="page-usage">
-      <div className="flex items-center justify-between">
+    <div className="p-3 md:p-6 space-y-4 md:space-y-6 max-w-5xl mx-auto" data-testid="page-usage">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-8 h-8 rounded-md bg-primary/20 border border-primary/30">
             <DollarSign className="w-4 h-4 text-primary" />
           </div>
-          <h1 className="text-lg font-bold tracking-tight" data-testid="text-usage-title">Usage & Costs</h1>
+          <h1 className="text-base md:text-lg font-bold tracking-tight" data-testid="text-usage-title">Usage & Costs</h1>
         </div>
         {s.totalCalls > 0 && (
           <Button

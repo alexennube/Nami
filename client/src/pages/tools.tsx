@@ -64,9 +64,9 @@ export default function Tools() {
   }, {});
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-[800px] overflow-auto h-full">
+    <div className="flex flex-col gap-4 md:gap-6 p-3 md:p-6 max-w-[800px] overflow-auto h-full">
       <div>
-        <h1 className="text-lg font-semibold" data-testid="text-tools-title">Tools</h1>
+        <h1 className="text-base md:text-lg font-semibold" data-testid="text-tools-title">Tools</h1>
         <p className="text-xs text-muted-foreground">Workspace tools available to Nami during chat and heartbeat cycles</p>
       </div>
 

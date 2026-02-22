@@ -87,7 +87,7 @@ export default function EngineMindPage() {
 
   if (isLoading) {
     return (
-      <div className="p-6 max-w-2xl mx-auto space-y-4">
+      <div className="p-3 md:p-6 max-w-2xl mx-auto space-y-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-32 w-full" />
@@ -96,11 +96,11 @@ export default function EngineMindPage() {
   }
 
   return (
-    <div className="p-6 max-w-2xl mx-auto space-y-4">
-      <div className="flex items-center justify-between">
+    <div className="p-3 md:p-6 max-w-2xl mx-auto space-y-4">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2">
           <Waypoints className="w-5 h-5 text-primary" />
-          <h1 className="text-lg font-bold" data-testid="text-page-title">Senses</h1>
+          <h1 className="text-base md:text-lg font-bold" data-testid="text-page-title">Senses</h1>
         </div>
         <Badge variant={status?.initialized ? "default" : "secondary"} data-testid="badge-mind-status">
           {status?.initialized ? "Active" : "Inactive"}
@@ -126,7 +126,7 @@ export default function EngineMindPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {!status?.initialized ? (
               <Button
                 size="sm"
@@ -171,7 +171,7 @@ export default function EngineMindPage() {
           <CardTitle className="text-sm">Statistics</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-3 md:grid-cols-5 gap-3">
             {[
               { label: "Prompts", value: status?.totalPrompts || 0 },
               { label: "Tools", value: status?.totalToolExecutions || 0 },

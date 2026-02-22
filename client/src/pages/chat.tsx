@@ -6,11 +6,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Send, ChevronDown, ChevronUp, Heart, PanelRightOpen, PanelRightClose, Clock, Zap, Moon, AlertTriangle } from "lucide-react";
 import type { ChatMessage, EngineStatus, HeartbeatLog } from "@shared/schema";
 
 export default function Chat() {
   const [input, setInput] = useState("");
+  const isMobile = useIsMobile();
   const [timelineOpen, setTimelineOpen] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -77,7 +79,7 @@ export default function Chat() {
   return (
     <div className="flex h-full">
       <div className="flex flex-col flex-1 min-w-0">
-        <div className="flex-1 overflow-auto px-6 py-4" ref={scrollRef}>
+        <div className="flex-1 overflow-auto px-3 md:px-6 py-4" ref={scrollRef}>
           {isLoading ? (
             <div className="space-y-6 py-4 max-w-3xl mx-auto">
               {[1, 2, 3].map((i) => (
@@ -121,9 +123,9 @@ export default function Chat() {
         </div>
 
         <div className="border-t bg-background">
-          <div className="max-w-3xl mx-auto px-4 py-3">
+          <div className="max-w-3xl mx-auto px-3 md:px-4 py-2 md:py-3">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-muted-foreground font-mono shrink-0" data-testid="text-model-indicator">
+              <span className="text-[10px] text-muted-foreground font-mono shrink-0 hidden md:inline" data-testid="text-model-indicator">
                 {engineStatus?.currentModel || "openai/gpt-4o"}
               </span>
               <div className="flex-1 relative">
@@ -135,22 +137,25 @@ export default function Chat() {
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
                   disabled={sendMutation.isPending}
-                  className="w-full bg-card border border-border rounded-md px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50"
+                  className="w-full bg-card border border-border rounded-md px-3 md:px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50"
                   data-testid="input-chat-message"
                 />
               </div>
               <div className="flex items-center gap-1">
+                {!isMobile && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setTimelineOpen(!timelineOpen)}
+                    data-testid="button-toggle-timeline"
+                  >
+                    {timelineOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
+                  </Button>
+                )}
                 <Button
                   size="icon"
                   variant="ghost"
-                  onClick={() => setTimelineOpen(!timelineOpen)}
-                  data-testid="button-toggle-timeline"
-                >
-                  {timelineOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
-                </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
+                  className="hidden md:inline-flex"
                   onClick={() => {
                     if (scrollRef.current) scrollRef.current.scrollTop = 0;
                   }}
@@ -161,6 +166,7 @@ export default function Chat() {
                 <Button
                   size="icon"
                   variant="ghost"
+                  className="hidden md:inline-flex"
                   onClick={() => {
                     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
                   }}
@@ -182,7 +188,7 @@ export default function Chat() {
         </div>
       </div>
 
-      {timelineOpen && (
+      {timelineOpen && !isMobile && (
         <div className="w-72 border-l flex flex-col h-full bg-sidebar shrink-0">
           <div className="flex items-center justify-between gap-2 px-3 py-2 border-b">
             <div className="flex items-center gap-1.5">
@@ -301,8 +307,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
           {senderLabel}
         </p>
-        <div className="bg-card border border-border rounded-md px-4 py-3 max-w-lg">
-          <p className="text-sm whitespace-pre-wrap" data-testid={`text-message-content-${message.id}`}>{message.content}</p>
+        <div className="bg-card border border-border rounded-md px-3 md:px-4 py-3 max-w-[85vw] md:max-w-lg">
+          <p className="text-sm whitespace-pre-wrap break-words" data-testid={`text-message-content-${message.id}`}>{message.content}</p>
         </div>
       </div>
     );
@@ -313,8 +319,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
         {senderLabel}
       </p>
-      <div className={`rounded-md px-4 py-3 max-w-lg ${isSleep ? "bg-card border border-border" : "bg-card border border-border"}`}>
-        <p className={`text-sm whitespace-pre-wrap ${isSleep ? "font-mono text-muted-foreground" : ""}`} data-testid={`text-message-content-${message.id}`}>
+      <div className={`rounded-md px-3 md:px-4 py-3 max-w-[85vw] md:max-w-lg ${isSleep ? "bg-card border border-border" : "bg-card border border-border"}`}>
+        <p className={`text-sm whitespace-pre-wrap break-words ${isSleep ? "font-mono text-muted-foreground" : ""}`} data-testid={`text-message-content-${message.id}`}>
           {message.content}
         </p>
       </div>

@@ -42,9 +42,9 @@ export default function Thoughts() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between gap-2 p-4 pb-2 flex-wrap">
+      <div className="flex items-center justify-between gap-2 p-3 md:p-4 pb-2 flex-wrap">
         <div>
-          <h1 className="text-lg font-semibold" data-testid="text-thoughts-title">Thoughts</h1>
+          <h1 className="text-base md:text-lg font-semibold" data-testid="text-thoughts-title">Thoughts</h1>
           <p className="text-xs text-muted-foreground">Nami's internal reasoning and observations</p>
         </div>
         <Button
@@ -59,7 +59,7 @@ export default function Thoughts() {
         </Button>
       </div>
 
-      <ScrollArea className="flex-1 px-4 pb-4">
+      <ScrollArea className="flex-1 px-3 md:px-4 pb-4">
         {isLoading ? (
           <div className="space-y-3 py-2">
             {[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full" />)}

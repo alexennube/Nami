@@ -123,7 +123,7 @@ export default function SwarmDetail() {
 
   return (
     <div className="flex flex-col h-full max-w-4xl mx-auto">
-      <div className="flex items-center gap-3 p-4 border-b shrink-0">
+      <div className="flex items-center gap-2 md:gap-3 p-3 md:p-4 border-b shrink-0">
         <Link href="/swarms">
           <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-back">
             <ArrowLeft className="w-4 h-4" />
@@ -134,13 +134,13 @@ export default function SwarmDetail() {
           <span className="font-medium text-sm truncate" data-testid="text-swarm-name">{swarm.name}</span>
           <StatusBadge status={swarm.status} />
         </div>
-        <div className="flex items-center gap-2 text-[10px] text-muted-foreground shrink-0">
+        <div className="hidden md:flex items-center gap-2 text-[10px] text-muted-foreground shrink-0">
           <span>{swarm.progress}%</span>
           <Progress value={swarm.progress} className="h-1.5 w-16" />
         </div>
       </div>
 
-      <div className="flex items-start gap-4 p-4 border-b shrink-0 bg-muted/20">
+      <div className="flex flex-col md:flex-row items-start gap-3 md:gap-4 p-3 md:p-4 border-b shrink-0 bg-muted/20">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-1">
             <Target className="w-3 h-3 text-muted-foreground" />

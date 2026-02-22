@@ -67,7 +67,7 @@ function CreateSpawnDialog() {
           Create Spawn
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-w-[calc(100vw-2rem)] md:max-w-lg">
         <DialogHeader>
           <DialogTitle>Create New Spawn</DialogTitle>
           <DialogDescription>Spawns are child agents managed by Nami. Configure the agent's identity and model.</DialogDescription>
@@ -205,10 +205,10 @@ export default function Spawns() {
   const spawns = agents?.filter((a) => a.role === "spawn") || [];
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-[1400px]">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+    <div className="flex flex-col gap-4 md:gap-6 p-3 md:p-6 max-w-[1400px]">
+      <div className="flex items-start justify-between gap-2 md:gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight" data-testid="text-spawns-title">Spawns</h1>
+          <h1 className="text-base md:text-xl font-semibold tracking-tight" data-testid="text-spawns-title">Spawns</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Create and manage Nami's child agents</p>
         </div>
         <CreateSpawnDialog />
