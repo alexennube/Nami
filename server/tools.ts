@@ -825,8 +825,18 @@ const manageSwarmTool: NamiTool = {
     required: ["action"],
   },
   execute: async (args) => {
+    // Guard clause - ensure we have a proper tool invocation
+    if (!args || typeof args !== 'object') {
+      return "Error: Invalid arguments provided to manage_swarm tool.";
+    }
+
     const action = args.action as string;
     const swarmId = args.swarm_id as string;
+
+    // Validate that we have an action
+    if (!action) {
+      return "Error: action is required for manage_swarm tool.";
+    }
 
     try {
       if (action === "list") {
@@ -838,31 +848,64 @@ const manageSwarmTool: NamiTool = {
         }).join("\n\n");
       }
 
-      if (!swarmId) return "Error: swarm_id is required for this action.";
+      // For non-list actions, swarm_id is required
+      if (!swarmId) {
+        return "Error: swarm_id is required for this action.";
+      }
 
       const engine = getEngine();
+      
+      // Enhanced swarm lookup to handle UUID variations
+      let swarm = null;
+      
+      // Try to find swarm by exact ID first
+      swarm = await engine.getSwarm(swarmId);
+      
+      // If swarm not found by exact ID AND it looks like a truncated UUID, try to match by partial ID
+      if (!swarm && swarmId.length === 8 && /^[a-f0-9]+$/.test(swarmId)) {
+        const swarms = await storage.getSwarms();
+        const matchingSwarms = swarms.filter(s => s.id.startsWith(swarmId));
+        if (matchingSwarms.length === 1) {
+          swarm = matchingSwarms[0];
+        } else if (matchingSwarms.length > 1) {
+          return `Error: Multiple swarms found with truncated ID '${swarmId}'. Please use full UUID.`;
+        }
+      }
+      
+      // If still not found, try name lookup
+      if (!swarm) {
+        const swarms = await storage.getSwarms();
+        const foundSwarm = swarms.find(s => s.name === swarmId);
+        if (foundSwarm) {
+          swarm = foundSwarm;
+        }
+      }
+      
+      if (!swarm) {
+        return `Error: Swarm '${swarmId}' not found. Available swarms:\n${(await storage.getSwarms()).map(s => `- ${s.name} (${s.id})`).join('\n')}`;
+      }
 
       if (action === "status") {
-        return await engine.getSwarmStatus(swarmId);
+        return await engine.getSwarmStatus(swarm.id);
       }
 
       if (action === "activate") {
-        const swarmData = await engine.getSwarm(swarmId);
-        await engine.swarmAction(swarmId, "activate");
-        engine.runSwarmQueen(swarmId, swarmData?.maxCycles).catch((err: any) => {
-          log(`SwarmQueen autonomous loop error for ${swarmId}: ${err.message}`, "engine");
+        const swarmData = await engine.getSwarm(swarm.id);
+        await engine.swarmAction(swarm.id, "activate");
+        engine.runSwarmQueen(swarm.id, swarmData?.maxCycles).catch((err: any) => {
+          log(`SwarmQueen autonomous loop error for ${swarm.id}: ${err.message}`, "engine");
         });
-        return `Swarm ${swarmId} activated. Queen is now running autonomously.`;
+        return `Swarm ${swarm.id} activated. Queen is now running autonomously.`;
       }
 
       if (action === "pause") {
-        await engine.swarmAction(swarmId, "pause");
-        return `Swarm ${swarmId} paused. Queen and spawns paused.`;
+        await engine.swarmAction(swarm.id, "pause");
+        return `Swarm ${swarm.id} paused. Queen and spawns paused.`;
       }
 
       if (action === "complete") {
-        await engine.swarmAction(swarmId, "complete");
-        return `Swarm ${swarmId} force-completed by Nami.`;
+        await engine.swarmAction(swarm.id, "complete");
+        return `Swarm ${swarm.id} force-completed by Nami.`;
       }
 
       if (action === "add_spawn") {
@@ -874,13 +917,13 @@ const manageSwarmTool: NamiTool = {
           model: config.defaultModel,
           systemPrompt: spawnPrompt,
           parentId: null,
-          swarmId,
+          swarmId: swarm.id,
         });
-        const swarm = await storage.getSwarm(swarmId);
-        if (swarm) {
-          await storage.updateSwarm(swarmId, { agentIds: [...swarm.agentIds, spawn.id] });
+        const updatedSwarm = await storage.getSwarm(swarm.id);
+        if (updatedSwarm) {
+          await storage.updateSwarm(swarm.id, { agentIds: [...updatedSwarm.agentIds, spawn.id] });
         }
-        return `Spawn "${spawn.name}" (${spawn.id}) added to swarm ${swarmId}.`;
+        return `Spawn "${spawn.name}" (${spawn.id}) added to swarm ${swarm.id}.`;
       }
 
       return `Unknown action: ${action}`;
