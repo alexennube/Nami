@@ -251,7 +251,7 @@ export const engineMindStatusSchema = z.object({
   totalToolExecutions: z.number().default(0),
   totalSelfHeals: z.number().default(0),
   lastActivity: z.string().nullable(),
-  errors: z.array(z.string()).default([]),
+  errors: z.array(z.object({ timestamp: z.string(), message: z.string(), recovered: z.boolean() })).default([]),
 });
 export type EngineMindStatus = z.infer<typeof engineMindStatusSchema>;
 export type NamiConfig = z.infer<typeof namiConfigSchema>;

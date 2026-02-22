@@ -444,7 +444,7 @@ const webBrowseTool: NamiTool = {
     const waitSeconds = (args.wait_seconds as number) || 3;
     const wantScreenshot = args.screenshot === "true";
 
-    const chromiumArgs = ["--headless", "--no-sandbox", "--disable-gpu", "--disable-software-rasterizer", "--dump-dom", `--timeout=${waitSeconds * 1000}`, parsedUrl.href];
+    const chromiumArgs = ["--headless", "--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage", "--single-process", "--no-zygote", "--dump-dom", `--timeout=${waitSeconds * 1000}`, parsedUrl.href];
 
     return new Promise((resolve) => {
       execFile(CHROMIUM_PATH, chromiumArgs, { cwd: WORKSPACE_ROOT, timeout: (waitSeconds + 10) * 1000, maxBuffer: 1024 * 1024 }, async (error, stdout, stderr) => {
@@ -462,7 +462,7 @@ const webBrowseTool: NamiTool = {
 
         if (wantScreenshot) {
           const screenshotPath = path.join(WORKSPACE_ROOT, ".nami-data", `screenshot-${Date.now()}.png`);
-          const ssArgs = ["--headless", "--no-sandbox", "--disable-gpu", "--disable-software-rasterizer", `--screenshot=${screenshotPath}`, "--window-size=1280,720", parsedUrl.href];
+          const ssArgs = ["--headless", "--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu", "--disable-software-rasterizer", "--disable-dev-shm-usage", "--single-process", "--no-zygote", `--screenshot=${screenshotPath}`, "--window-size=1280,720", parsedUrl.href];
           execFile(CHROMIUM_PATH, ssArgs, { cwd: WORKSPACE_ROOT, timeout: (waitSeconds + 10) * 1000 }, (ssErr) => {
             if (!ssErr && fs.existsSync(screenshotPath)) {
               result += `\n\nScreenshot saved to: ${path.relative(WORKSPACE_ROOT, screenshotPath)}`;

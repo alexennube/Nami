@@ -685,7 +685,7 @@ export async function runAgentInference(agentId: string, userMessage: string): P
     ...history.map((m) => ({ role: m.role, content: m.content })),
   ];
 
-  const agentResult = await chatCompletion(messages, { model: agent.model });
+  const agentResult = await chatCompletion(messages, { model: agent.model, useTools: true, maxToolRounds: 3 });
   const { content, tokensUsed } = agentResult;
   await recordUsage(agentResult, "agent", agent.swarmId, agentId);
 
@@ -882,7 +882,22 @@ const SWARM_QUEEN_SYSTEM_PROMPT = (goal: string, objective: string) => `You are 
 5. You NEVER mark the objective as complete until you have verified the quality of all spawn outputs.
 
 ## Your Tools
-You can create spawns and assign them tasks. Each spawn is a focused worker agent.
+You have access to ALL workspace tools via function calling:
+- file_read: Read any file in the workspace
+- file_write: Create or modify files
+- file_list: Browse directory structure
+- shell_exec: Execute shell commands
+- self_inspect: Inspect system state
+- web_browse: Browse web pages using Chromium
+- web_search: Search the web for real-time information
+- google_workspace: Access Google Workspace (Gmail, Calendar, Drive, Sheets, Docs)
+- ennube_mcp: Call Ennube AI MCP server tools
+- docs_read / docs_write: Read/write documentation pages
+- pin_chat: Pin important findings
+
+USE THESE TOOLS DIRECTLY via function calls. Do not simulate or fake tool usage.
+
+You can also create spawns and assign them tasks. Each spawn is a focused worker agent.
 To create a spawn, respond with a JSON block:
 \`\`\`spawn
 {"name": "spawn-name", "task": "detailed task description for this spawn"}
@@ -989,6 +1004,8 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
       const queenResult = await chatCompletion(conversationHistory, {
         model: queenModel,
         maxTokens: 2048,
+        useTools: true,
+        maxToolRounds: 3,
       });
       const { content, tokensUsed } = queenResult;
       await recordUsage(queenResult, "swarm", swarmId, queen.id);

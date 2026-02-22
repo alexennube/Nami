@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { storage } from "./storage";
 import { log } from "./index";
 import { getToolsForLLM, executeToolCall, getEnabledTools } from "./tools";
+import { engineMind } from "./engine-mind";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -165,7 +166,16 @@ export async function chatCompletion(
 
           log(`Tool call: ${fnName}(${JSON.stringify(fnArgs).substring(0, 80)})`, "openrouter");
 
-          const result = await executeToolCall(fnName, fnArgs);
+          let result: string;
+          if (engineMind.isInitialized()) {
+            const healResult = await engineMind.executeWithHealing(fnName, fnArgs);
+            result = healResult.result;
+            if (healResult.healed) {
+              log(`Engine Mind healed tool ${fnName}: ${healResult.healDetails?.substring(0, 100)}`, "openrouter");
+            }
+          } else {
+            result = await executeToolCall(fnName, fnArgs);
+          }
           allToolCalls.push({ name: fnName, args: fnArgs, result: result.substring(0, 500) });
 
           conversationMessages.push({
