@@ -37,12 +37,31 @@ export default function Chat() {
       const res = await apiRequest("POST", "/api/chat", { message });
       return res.json();
     },
+    onMutate: async (message: string) => {
+      await queryClient.cancelQueries({ queryKey: ["/api/chat"] });
+      const previous = queryClient.getQueryData<ChatMessage[]>(["/api/chat"]);
+      const optimisticMsg: ChatMessage = {
+        id: `optimistic-${Date.now()}`,
+        role: "user",
+        content: message,
+        agentId: null,
+        agentName: null,
+        tokensUsed: 0,
+        autonomous: false,
+        timestamp: new Date().toISOString(),
+      };
+      queryClient.setQueryData<ChatMessage[]>(["/api/chat"], (old = []) => [...old, optimisticMsg]);
+      return { previous };
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chat"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/thoughts"] });
     },
-    onError: (err: Error) => {
+    onError: (err: Error, _msg, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["/api/chat"], context.previous);
+      }
       toast({ title: "Failed to send message", description: err.message, variant: "destructive" });
     },
   });

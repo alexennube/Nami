@@ -255,4 +255,35 @@
   .animate-pulse-glow {
     animation: pulse-glow 2s ease-in-out infinite;
   }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 255, 65, 0.25) #0a0a0a;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #0a0a0a;
+    border: 1px solid rgba(0, 255, 65, 0.2);
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(0, 255, 65, 0.25);
+    border: 1px solid rgba(0, 255, 65, 0.4);
+    border-radius: 4px;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 255, 65, 0.4);
+    border-color: rgba(0, 255, 65, 0.6);
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: #0a0a0a;
+  }
 }
