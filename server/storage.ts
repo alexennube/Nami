@@ -186,12 +186,24 @@ export class MemStorage implements IStorage {
 
     const savedAgents = loadJson<Agent[]>(AGENTS_FILE, []);
     for (const agent of savedAgents) {
+      if (agent.status === "running") {
+        agent.status = "idle";
+      }
       this.agents.set(agent.id, agent);
     }
 
     const savedSwarms = loadJson<Swarm[]>(SWARMS_FILE, []);
+    let interruptedCount = 0;
     for (const swarm of savedSwarms) {
+      if (swarm.status === "active") {
+        swarm.status = "failed";
+        interruptedCount++;
+      }
       this.swarms.set(swarm.id, swarm);
+    }
+    if (interruptedCount > 0) {
+      this.persistSwarms();
+      console.log(`[storage] Marked ${interruptedCount} active swarm(s) as failed (server restart)`);
     }
 
     this.events = loadJson<NamiEvent[]>(EVENTS_FILE, []);

@@ -7,6 +7,10 @@ export function useNamiEvents() {
   useEffect(() => {
     namiWs.connect();
 
+    const unsubscribeReconnect = namiWs.onReconnect(() => {
+      queryClient.invalidateQueries();
+    });
+
     const unsubscribe = namiWs.subscribe((event: NamiEvent) => {
       switch (event.type) {
         case "agent_created":
@@ -45,6 +49,7 @@ export function useNamiEvents() {
 
     return () => {
       unsubscribe();
+      unsubscribeReconnect();
       namiWs.disconnect();
     };
   }, []);

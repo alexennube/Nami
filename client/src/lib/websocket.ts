@@ -1,12 +1,15 @@
 import type { NamiEvent } from "@shared/schema";
 
 type EventHandler = (event: NamiEvent) => void;
+type ReconnectHandler = () => void;
 
 class NamiWebSocket {
   private ws: WebSocket | null = null;
   private handlers: Set<EventHandler> = new Set();
+  private reconnectHandlers: Set<ReconnectHandler> = new Set();
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private isConnecting = false;
+  private hasConnectedBefore = false;
 
   connect() {
     if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) return;
@@ -17,7 +20,13 @@ class NamiWebSocket {
 
     this.ws.onopen = () => {
       this.isConnecting = false;
-      console.log("[Nami WS] Connected");
+      if (this.hasConnectedBefore) {
+        console.log("[Nami WS] Reconnected — refreshing all data");
+        this.reconnectHandlers.forEach((handler) => handler());
+      } else {
+        console.log("[Nami WS] Connected");
+      }
+      this.hasConnectedBefore = true;
     };
 
     this.ws.onmessage = (event) => {
@@ -48,6 +57,11 @@ class NamiWebSocket {
   subscribe(handler: EventHandler) {
     this.handlers.add(handler);
     return () => this.handlers.delete(handler);
+  }
+
+  onReconnect(handler: ReconnectHandler) {
+    this.reconnectHandlers.add(handler);
+    return () => this.reconnectHandlers.delete(handler);
   }
 
   disconnect() {
