@@ -16,7 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   MessageSquare,
-  Pin,
+
   Brain,
   BookOpen,
   Heart,
@@ -36,7 +36,7 @@ import {
   FileText,
 } from "lucide-react";
 import { useState } from "react";
-import type { EngineStatus, PinnedChat } from "@shared/schema";
+import type { EngineStatus } from "@shared/schema";
 
 export function AppSidebar() {
   const [location] = useLocation();
@@ -49,19 +49,6 @@ export function AppSidebar() {
     refetchInterval: 3000,
   });
 
-  const { data: pinnedChats } = useQuery<PinnedChat[]>({
-    queryKey: ["/api/pinned-chats"],
-    refetchInterval: 10000,
-  });
-
-  const unpinMutation = useMutation({
-    mutationFn: async (id: string) => {
-      await apiRequest("DELETE", `/api/pinned-chats/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pinned-chats"] });
-    },
-  });
 
   const startMutation = useMutation({
     mutationFn: async () => {
@@ -196,29 +183,6 @@ export function AppSidebar() {
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-                {pinnedChats && pinnedChats.length > 0 && pinnedChats.map((pin) => (
-                  <SidebarMenuItem key={pin.id} className="group relative">
-                    <SidebarMenuButton
-                      asChild
-                      className="text-sidebar-foreground/70 text-xs h-7"
-                      data-testid={`link-pinned-chat-${pin.id}`}
-                    >
-                      <div title={pin.summary}>
-                        <Pin className="w-3 h-3 shrink-0 text-primary/60" />
-                        <span className="truncate" data-testid={`text-pin-title-${pin.id}`}>{pin.title}</span>
-                      </div>
-                    </SidebarMenuButton>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity h-5 w-5 text-muted-foreground"
-                      onClick={() => unpinMutation.mutate(pin.id)}
-                      data-testid={`button-unpin-${pin.id}`}
-                    >
-                      ×
-                    </Button>
-                  </SidebarMenuItem>
-                ))}
               </SidebarMenu>
             </SidebarGroupContent>
           )}

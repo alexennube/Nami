@@ -66,7 +66,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - 2026-02-20: Repo cleanup for shareability: removed 19 unused deps (drizzle, passport, pg, etc.), dead files (drizzle.config.ts, dashboard.tsx), cleaned build script, updated .gitignore, added .env.example, updated package.json metadata.
 - 2026-02-20: Usage tracking system: UsageRecord schema with per-call prompt/completion tokens, model, cost, source (heartbeat/chat/agent/swarm). OpenRouter pricing cache with 6h TTL. recordUsage wired at all 5 chatCompletion call sites. Usage page UI with summary cards + by-source/model/swarm breakdown tabs. API routes: GET /api/usage, GET /api/usage/summary, DELETE /api/usage. Sidebar entry added.
 - 2026-02-22: Engine Mind (Pi) self-healing wired into ALL tool execution: openrouter.ts routes tool calls through executeWithHealing when Engine Mind is initialized, covers chat, heartbeat, SwarmQueen, and spawn agents
-- 2026-02-22: SwarmQueens and spawns now have full tool access (useTools: true, maxToolRounds: 3) - can use web_search, web_browse, file_read/write, shell_exec, google_workspace, ennube_mcp, docs_read/write, pin_chat
+- 2026-02-22: SwarmQueens and spawns now have full tool access (useTools: true, maxToolRounds: 3) - can use web_search, web_browse, file_read/write, shell_exec, google_workspace, ennube_mcp, docs_read/write
 - 2026-02-22: Chromium web_browse fixed for containerized environments: added --disable-setuid-sandbox, --disable-dev-shm-usage, --single-process, --no-zygote flags
 - 2026-02-22: Fixed EngineMindStatus schema errors field type mismatch (z.string[] -> z.object[])
 - 2026-02-22: Full mobile responsiveness across all pages (responsive padding, flex-wrap, dialog constraints, mobile header with sidebar trigger)
@@ -74,8 +74,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - 2026-02-20: Full disk persistence for agents, swarms, events, and agent messages (.nami-data/) - all survive server restarts
 - 2026-02-20: Swarm detail page (/swarms/:id) with group-chat-style activity feed showing queen thinking, spawn creation, spawn results, reviews, errors, completion messages. SwarmMessage schema + storage + API route. Swarm cards now clickable with View button.
 - 2026-02-20: Engine Mind (Pi framework) integration: server/engine-mind.ts with self-healing executeWithHealing, spawn validation, auto-compaction (40+ msg threshold), diagnostics, Pi Session monitoring page, Engine Mind settings (enable/disable, model selector), API routes (/api/engine-mind/status, initialize, shutdown, reinitialize, diagnostic, compact)
-- 2026-02-20: Pinned chat feature: pin_chat tool for Nami, PinnedChat schema with insert validation, sidebar display with hover-to-unpin, disk persistence
-- 2026-02-20: Removed non-functional New Chat button, replaced with pinned chats in sidebar
+- 2026-02-22: Removed pinned chat feature (pin_chat tool, PinnedChat schema, sidebar display, API routes, disk persistence)
 - 2026-02-20: Added web_search tool (Perplexity via OpenRouter) for real-time web search capability
 - 2026-02-20: Swarms page filter toggle: Active / Completed / Cancelled & Failed tabs with count badges
 - 2026-02-20: Added create_swarm and manage_swarm tools for Nami's LLM function calling

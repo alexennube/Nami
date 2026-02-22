@@ -142,19 +142,6 @@ export const chatMessageSchema = z.object({
 });
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
-export const pinnedChatSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  summary: z.string(),
-  messageId: z.string().nullable(),
-  pinnedAt: z.string(),
-  pinnedBy: z.enum(["user", "nami"]),
-  category: z.string().default("general"),
-});
-export type PinnedChat = z.infer<typeof pinnedChatSchema>;
-
-export const insertPinnedChatSchema = pinnedChatSchema.omit({ id: true, pinnedAt: true });
-export type InsertPinnedChat = z.infer<typeof insertPinnedChatSchema>;
 
 export const thoughtSchema = z.object({
   id: z.string(),

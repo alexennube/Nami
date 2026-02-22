@@ -730,15 +730,6 @@ SWARM MANAGEMENT TOOLS (use these to create and manage swarms):
 - create_swarm: Create a new swarm with an autonomous SwarmQueen. Provide a name, goal, and objective. The queen will independently spawn agents, delegate tasks, monitor progress, and review results before completing. Use this when the user wants to start a multi-agent workflow.
 - manage_swarm: Manage existing swarms. Actions: 'list' (list all swarms), 'status' (get details), 'activate' (start/resume), 'pause', 'complete' (force complete), 'add_spawn' (manually add an agent to a swarm).
 
-PINNING TOOL:
-- pin_chat: Pin important conversation moments to the sidebar for quick reference. Use this proactively when:
-  * The user explicitly asks you to remember or save something
-  * A significant decision is made (architecture choice, tool selection, preference)
-  * A task or swarm completes with important results worth referencing later
-  * Key configuration changes are made (model, API key, settings)
-  * A milestone is reached in the project
-  Do NOT pin routine messages or trivial interactions.
-
 CRITICAL RULES:
 1. When users ask you to create a swarm or start a workflow, you MUST use the create_swarm tool function call. NEVER fabricate or simulate a swarm creation response. If you do not call the create_swarm tool, the swarm WILL NOT be created.
 2. NEVER invent tool call results. If you want to use a tool, you MUST make an actual function call. Do not write fake tool outputs or pretend you called a tool.
@@ -893,7 +884,7 @@ You have access to ALL workspace tools via function calling:
 - google_workspace: Access Google Workspace (Gmail, Calendar, Drive, Sheets, Docs)
 - ennube_mcp: Call Ennube AI MCP server tools
 - docs_read / docs_write: Read/write documentation pages
-- pin_chat: Pin important findings
+
 
 USE THESE TOOLS DIRECTLY via function calls. Do not simulate or fake tool usage.
 

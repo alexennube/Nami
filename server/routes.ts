@@ -6,7 +6,7 @@ import path from "path";
 import { storage } from "./storage";
 import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
-import { insertAgentSchema, insertSwarmSchema, insertPinnedChatSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
+import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
 import { engineMind } from "./engine-mind";
@@ -326,26 +326,6 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  app.get("/api/pinned-chats", async (_req, res) => {
-    const pins = await storage.getPinnedChats();
-    res.json(pins);
-  });
-
-  app.post("/api/pinned-chats", async (req, res) => {
-    try {
-      const data = insertPinnedChatSchema.parse(req.body);
-      const pin = await storage.addPinnedChat(data);
-      res.json(pin);
-    } catch (error: any) {
-      res.status(400).json({ message: error.message });
-    }
-  });
-
-  app.delete("/api/pinned-chats/:id", async (req, res) => {
-    const deleted = await storage.deletePinnedChat(req.params.id);
-    if (!deleted) return res.status(404).json({ message: "Pinned chat not found" });
-    res.json({ success: true });
-  });
 
   app.get("/api/heartbeat", async (_req, res) => {
     const config = await storage.getHeartbeatConfig();
