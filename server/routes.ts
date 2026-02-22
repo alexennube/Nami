@@ -590,5 +590,100 @@ export async function registerRoutes(
     }
   });
 
+  const WORKSPACE_ROOT = process.cwd();
+  const BLOCKED_BROWSE = ["node_modules", ".git", ".cache", "dist", ".upm", ".config", ".local"];
+
+  function isBlockedBrowse(relative: string): boolean {
+    return BLOCKED_BROWSE.some((b) => relative === b || relative.startsWith(b + "/"));
+  }
+
+  app.get("/api/files", async (req, res) => {
+    const dir = (req.query.path as string) || ".";
+    const resolved = path.resolve(WORKSPACE_ROOT, dir);
+    if (!resolved.startsWith(WORKSPACE_ROOT)) return res.status(403).json({ message: "Access denied" });
+
+    try {
+      const entries = await fs.promises.readdir(resolved, { withFileTypes: true });
+      const relative = path.relative(WORKSPACE_ROOT, resolved);
+      const items = entries
+        .map((e) => {
+          const entryRelative = relative ? `${relative}/${e.name}` : e.name;
+          if (isBlockedBrowse(entryRelative)) return null;
+          if (e.name.startsWith(".") && e.isDirectory()) return null;
+          return {
+            name: e.name,
+            path: entryRelative,
+            isDirectory: e.isDirectory(),
+          };
+        })
+        .filter(Boolean)
+        .sort((a: any, b: any) => {
+          if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+
+      res.json({ path: relative || ".", items });
+    } catch (err: any) {
+      res.status(404).json({ message: "Directory not found" });
+    }
+  });
+
+  app.get("/api/files/read", async (req, res) => {
+    const filePath = req.query.path as string;
+    if (!filePath) return res.status(400).json({ message: "Path required" });
+
+    const resolved = path.resolve(WORKSPACE_ROOT, filePath);
+    if (!resolved.startsWith(WORKSPACE_ROOT)) return res.status(403).json({ message: "Access denied" });
+
+    const relative = path.relative(WORKSPACE_ROOT, resolved);
+    if (isBlockedBrowse(relative)) return res.status(403).json({ message: "Access denied" });
+
+    try {
+      const stat = await fs.promises.stat(resolved);
+      if (stat.isDirectory()) return res.status(400).json({ message: "Cannot read a directory" });
+      if (stat.size > 500000) return res.status(413).json({ message: "File too large (>500KB)" });
+
+      const ext = path.extname(resolved).toLowerCase();
+      const binaryExts = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".webp", ".pdf", ".zip", ".tar", ".gz", ".exe", ".bin"];
+      if (binaryExts.includes(ext)) {
+        return res.json({ path: filePath, binary: true, size: stat.size, extension: ext });
+      }
+
+      const content = await fs.promises.readFile(resolved, "utf-8");
+      res.json({
+        path: filePath,
+        content,
+        size: stat.size,
+        extension: ext,
+        lastModified: stat.mtime.toISOString(),
+      });
+    } catch (err: any) {
+      res.status(404).json({ message: "File not found" });
+    }
+  });
+
+  app.delete("/api/files", async (req, res) => {
+    const filePath = req.query.path as string;
+    if (!filePath) return res.status(400).json({ message: "Path required" });
+
+    const resolved = path.resolve(WORKSPACE_ROOT, filePath);
+    if (!resolved.startsWith(WORKSPACE_ROOT) || resolved === WORKSPACE_ROOT) return res.status(403).json({ message: "Access denied" });
+
+    const relative = path.relative(WORKSPACE_ROOT, resolved);
+    if (isBlockedBrowse(relative)) return res.status(403).json({ message: "Cannot delete system files" });
+
+    try {
+      const stat = await fs.promises.stat(resolved);
+      if (stat.isDirectory()) {
+        await fs.promises.rm(resolved, { recursive: true });
+      } else {
+        await fs.promises.unlink(resolved);
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(404).json({ message: "File not found" });
+    }
+  });
+
   return httpServer;
 }

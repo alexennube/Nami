@@ -24,6 +24,7 @@ import EngineMindPage from "@/pages/engine-mind";
 import SwarmDetail from "@/pages/swarm-detail";
 import UsagePage from "@/pages/usage";
 import DocsPage from "@/pages/docs";
+import FilesPage from "@/pages/files";
 import LoginPage from "@/pages/login";
 
 function Router() {
@@ -42,6 +43,7 @@ function Router() {
       <Route path="/tools" component={Tools} />
       <Route path="/usage" component={UsagePage} />
       <Route path="/docs" component={DocsPage} />
+      <Route path="/files" component={FilesPage} />
       <Route path="/activity" component={Activity} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
