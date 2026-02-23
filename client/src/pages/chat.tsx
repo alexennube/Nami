@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Send, ChevronDown, ChevronUp, Heart, PanelRightOpen, PanelRightClose, Clock, Zap, Moon, AlertTriangle } from "lucide-react";
+import { Send, ChevronDown, ChevronUp, Heart, PanelRightClose, Clock, Zap, Moon, AlertTriangle } from "lucide-react";
 import type { ChatMessage, EngineStatus, HeartbeatLog } from "@shared/schema";
 
 export default function Chat() {
@@ -161,16 +161,6 @@ export default function Chat() {
                 />
               </div>
               <div className="flex items-center gap-1">
-                {!isMobile && (
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setTimelineOpen(!timelineOpen)}
-                    data-testid="button-toggle-timeline"
-                  >
-                    {timelineOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRightOpen className="w-4 h-4" />}
-                  </Button>
-                )}
                 <Button
                   size="icon"
                   variant="ghost"
@@ -207,35 +197,60 @@ export default function Chat() {
         </div>
       </div>
 
-      {timelineOpen && !isMobile && (
-        <div className="w-72 border-l flex flex-col h-full bg-sidebar shrink-0">
-          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b">
-            <div className="flex items-center gap-1.5">
-              <Heart className="w-3.5 h-3.5 text-primary" />
-              <span className="text-xs font-semibold" data-testid="text-timeline-title">Heartbeat Timeline</span>
+      {!isMobile && (
+        timelineOpen ? (
+          <div className="w-72 border-l flex flex-col h-full bg-sidebar shrink-0">
+            <div className="flex items-center justify-between gap-2 px-3 py-2 border-b">
+              <div className="flex items-center gap-1.5">
+                <Heart className="w-3.5 h-3.5 text-primary" />
+                <span className="text-xs font-semibold" data-testid="text-timeline-title">Heartbeat Timeline</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Badge variant="secondary" className="text-[9px]" data-testid="text-timeline-count">
+                  {heartbeatLogs.length}
+                </Badge>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={() => setTimelineOpen(false)}
+                  data-testid="button-collapse-timeline"
+                >
+                  <PanelRightClose className="w-3.5 h-3.5" />
+                </Button>
+              </div>
             </div>
-            <Badge variant="secondary" className="text-[9px]" data-testid="text-timeline-count">
-              {heartbeatLogs.length}
-            </Badge>
+            <ScrollArea className="flex-1">
+              <div className="p-2">
+                {heartbeatLogs.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
+                    <Heart className="w-6 h-6 text-muted-foreground/30" />
+                    <p className="text-[11px] text-muted-foreground">No heartbeats yet</p>
+                    <p className="text-[10px] text-muted-foreground/60">Enable heartbeat and start the engine</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    {heartbeatLogs.map((log) => (
+                      <HeartbeatEntry key={log.id} log={log} formatDuration={formatDuration} formatTime={formatTime} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
           </div>
-          <ScrollArea className="flex-1">
-            <div className="p-2">
-              {heartbeatLogs.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
-                  <Heart className="w-6 h-6 text-muted-foreground/30" />
-                  <p className="text-[11px] text-muted-foreground">No heartbeats yet</p>
-                  <p className="text-[10px] text-muted-foreground/60">Enable heartbeat and start the engine</p>
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {heartbeatLogs.map((log) => (
-                    <HeartbeatEntry key={log.id} log={log} formatDuration={formatDuration} formatTime={formatTime} />
-                  ))}
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-        </div>
+        ) : (
+          <div className="w-12 border-l flex flex-col items-center bg-sidebar shrink-0">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="mt-2 h-8 w-8 rounded-full"
+              onClick={() => setTimelineOpen(true)}
+              data-testid="button-expand-timeline"
+            >
+              <Heart className="w-4 h-4 text-primary" />
+            </Button>
+          </div>
+        )
       )}
     </div>
   );
