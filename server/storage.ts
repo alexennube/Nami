@@ -2,6 +2,7 @@ import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, Sys
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
+import { dbGet, dbSet } from "./db-persist";
 
 const PERSIST_DIR = path.join(process.cwd(), ".nami-data");
 const CONFIG_FILE = path.join(PERSIST_DIR, "config.json");
@@ -166,7 +167,7 @@ export class MemStorage implements IStorage {
 
     this.heartbeatConfig = loadJson<HeartbeatConfig>(HEARTBEAT_CONFIG_FILE, defaultHeartbeat);
 
-    const savedEngine = loadJson<{ state: EngineState }>(ENGINE_STATE_FILE, { state: "running" });
+    const savedEngine = loadJson<{ state: EngineState }>(ENGINE_STATE_FILE, { state: "stopped" });
     this.engineState = savedEngine.state;
 
     this.chatHistory = loadJson<ChatMessage[]>(CHAT_HISTORY_FILE, []);
@@ -216,6 +217,39 @@ export class MemStorage implements IStorage {
     }
 
     console.log(`[storage] Loaded from disk (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState}, chat: ${this.chatHistory.length} msgs, thoughts: ${this.thoughts.length}, memories: ${this.memories.size}, skills: ${this.skills.size}, agents: ${this.agents.size}, swarms: ${this.swarms.size})`);
+  }
+
+  async initFromDb(): Promise<void> {
+    try {
+      const dbConfig = await dbGet<NamiConfig>("config");
+      if (dbConfig) {
+        this.config = { ...this.config, ...dbConfig };
+        if (!this.config.openRouterApiKey && process.env.OPENROUTER_API_KEY) {
+          this.config.openRouterApiKey = process.env.OPENROUTER_API_KEY;
+        }
+      } else {
+        const { openRouterApiKey: _, ...safeConfig } = this.config;
+        await dbSet("config", safeConfig);
+      }
+
+      const dbHeartbeat = await dbGet<HeartbeatConfig>("heartbeat");
+      if (dbHeartbeat) {
+        this.heartbeatConfig = { ...this.heartbeatConfig, ...dbHeartbeat };
+      } else {
+        await dbSet("heartbeat", this.heartbeatConfig);
+      }
+
+      const dbEngine = await dbGet<{ state: EngineState }>("engine-state");
+      if (dbEngine) {
+        this.engineState = dbEngine.state;
+      } else {
+        await dbSet("engine-state", { state: this.engineState });
+      }
+
+      console.log(`[storage] DB settings loaded (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState})`);
+    } catch (err: any) {
+      console.log(`[storage] DB settings load skipped: ${err.message}`);
+    }
   }
 
   async getAgents(): Promise<Agent[]> {
@@ -347,6 +381,8 @@ export class MemStorage implements IStorage {
   async updateConfig(updates: Partial<NamiConfig>): Promise<NamiConfig> {
     this.config = { ...this.config, ...updates };
     saveJson(CONFIG_FILE, this.config);
+    const { openRouterApiKey: _, ...safeConfig } = this.config;
+    dbSet("config", safeConfig).catch(() => {});
     return { ...this.config };
   }
 
@@ -530,6 +566,7 @@ export class MemStorage implements IStorage {
   async updateHeartbeatConfig(updates: Partial<HeartbeatConfig>): Promise<HeartbeatConfig> {
     this.heartbeatConfig = { ...this.heartbeatConfig, ...updates };
     saveJson(HEARTBEAT_CONFIG_FILE, this.heartbeatConfig);
+    dbSet("heartbeat", this.heartbeatConfig).catch(() => {});
     return { ...this.heartbeatConfig };
   }
 
@@ -553,6 +590,7 @@ export class MemStorage implements IStorage {
   async setEngineState(state: EngineState): Promise<EngineState> {
     this.engineState = state;
     saveJson(ENGINE_STATE_FILE, { state });
+    dbSet("engine-state", { state }).catch(() => {});
     return this.engineState;
   }
 

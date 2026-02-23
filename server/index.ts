@@ -179,6 +179,7 @@ app.use((req, res, next) => {
         const engine = await import("./engine");
         const { registerEngine } = await import("./tools");
         const { storage: storageInstance } = await import("./storage");
+        await storageInstance.initFromDb();
         registerEngine({
           createSwarmWithQueen: engine.createSwarmWithQueen,
           createSpawn: engine.createSpawn,
