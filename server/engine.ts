@@ -421,15 +421,6 @@ async function executeHeartbeat(instruction: string) {
       await eventBus.emit("heartbeat", { status: "sleep", beatNumber, context: systemContext, tokensUsed: totalTokens }, "nami");
       log(`Heartbeat #${beatNumber}: SLEEP (${totalTokens} tokens)`, "engine");
     } else {
-      await storage.addChatMessage({
-        role: "assistant",
-        content: cleanedResponse,
-        agentId: "nami",
-        agentName: "Nami",
-        tokensUsed: totalTokens,
-        autonomous: true,
-      });
-
       await storage.addHeartbeatLog({
         beatNumber,
         status: "active",
@@ -933,13 +924,12 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
   await storage.updateAgent(queen.id, { status: "running" });
   await eventBus.emit("system", { message: `SwarmQueen ${queen.name} starting autonomous work on: ${swarm.goal}` }, "swarm_queen");
 
-  await storage.addChatMessage({
-    role: "assistant",
-    content: `[SwarmQueen ${queen.name}] I am now autonomously working on: "${swarm.goal}". I will create spawns, delegate work, and review results. Updates will appear in the activity log.`,
+  await storage.addSwarmMessage({
+    swarmId,
     agentId: queen.id,
     agentName: queen.name,
-    tokensUsed: 0,
-    autonomous: true,
+    content: `I am now autonomously working on: "${swarm.goal}". I will create spawns, delegate work, and review results.`,
+    type: "queen_thinking",
   });
 
   await storage.addSwarmMessage({
@@ -1160,15 +1150,6 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
 
           await storage.updateAgent(queen.id, { status: "completed" });
 
-          await storage.addChatMessage({
-            role: "assistant",
-            content: `[SwarmQueen ${queen.name}] Objective COMPLETED: ${summary}`,
-            agentId: queen.id,
-            agentName: queen.name,
-            tokensUsed,
-            autonomous: true,
-          });
-
           await storage.addSwarmMessage({
             swarmId,
             agentId: queen.id,
@@ -1243,13 +1224,12 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
   if (finalSwarm && finalSwarm.status === "active") {
     await storage.updateAgent(queen.id, { status: "completed" });
 
-    await storage.addChatMessage({
-      role: "assistant",
-      content: `[SwarmQueen ${queen.name}] Maximum cycles reached. Swarm "${swarm.name}" auto-completed. Review spawn outputs for results.`,
+    await storage.addSwarmMessage({
+      swarmId,
       agentId: queen.id,
       agentName: queen.name,
-      tokensUsed: 0,
-      autonomous: true,
+      content: `Maximum cycles reached. Swarm "${swarm.name}" auto-completed. Review spawn outputs for results.`,
+      type: "completion",
     });
 
     await storage.addSwarmMessage({

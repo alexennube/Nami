@@ -390,7 +390,20 @@ export class MemStorage implements IStorage {
   async addChatMessage(data: Omit<ChatMessage, "id" | "timestamp">): Promise<ChatMessage> {
     const msg: ChatMessage = { ...data, id: randomUUID(), timestamp: new Date().toISOString() };
     this.chatHistory.push(msg);
-    if (this.chatHistory.length > 200) this.chatHistory = this.chatHistory.slice(-200);
+    const MAX_CHAT = 500;
+    if (this.chatHistory.length > MAX_CHAT) {
+      const keep = this.chatHistory.slice(-MAX_CHAT);
+      const keepIds = new Set(keep.map((m) => m.id));
+      const droppedUserMsgs = this.chatHistory.slice(0, -MAX_CHAT).filter((m) => m.role === "user" && !keepIds.has(m.id));
+      const rescueCount = Math.min(droppedUserMsgs.length, 50);
+      if (rescueCount > 0) {
+        const rescued = droppedUserMsgs.slice(-rescueCount);
+        const trimmed = keep.slice(rescueCount);
+        this.chatHistory = [...rescued, ...trimmed];
+      } else {
+        this.chatHistory = keep;
+      }
+    }
     this.persistChat();
     return msg;
   }
