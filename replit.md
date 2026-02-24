@@ -60,8 +60,13 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `POST /api/engine-mind/reinitialize` - Reinitialize Pi session
 - `POST /api/engine-mind/diagnostic` - Run Engine Mind diagnostic
 - `POST /api/engine-mind/compact` - Trigger chat history compaction
+- `GET /api/x/status` - X (Twitter) credential status
+- `POST /api/x/test` - Send test tweet
+- `POST /api/x/post` - Post tweet with custom text
+- `POST /api/x/delete` - Delete tweet by ID
 
 ## Recent Changes
+- 2026-02-24: X (Twitter) integration: server/x-api.ts OAuth 1.0a engine (post, delete tweets), 3 agent tools (x_post_tweet, x_delete_tweet, x_get_status) in "social" category, API routes (/api/x/status, test, post, delete), Settings UI card with credential status, test tweet, quick post. No external Twitter libs - built from Node crypto/https. Requires X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET secrets.
 - 2026-02-20: Documentation system: DocPage schema (slug, title, content, lastEditedBy), docs_read/docs_write agent tools, Docs page UI with markdown rendering, CRUD API routes (/api/docs), disk persistence, sidebar nav entry. README.md added for repo sharing.
 - 2026-02-20: Repo cleanup for shareability: removed 19 unused deps (drizzle, passport, pg, etc.), dead files (drizzle.config.ts, dashboard.tsx), cleaned build script, updated .gitignore, added .env.example, updated package.json metadata.
 - 2026-02-20: Usage tracking system: UsageRecord schema with per-call prompt/completion tokens, model, cost, source (heartbeat/chat/agent/swarm). OpenRouter pricing cache with 6h TTL. recordUsage wired at all 5 chatCompletion call sites. Usage page UI with summary cards + by-source/model/swarm breakdown tabs. API routes: GET /api/usage, GET /api/usage/summary, DELETE /api/usage. Sidebar entry added.

@@ -685,5 +685,46 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/x/status", async (_req, res) => {
+    const { getXStatus } = await import("./x-api");
+    res.json(getXStatus());
+  });
+
+  app.post("/api/x/test", async (_req, res) => {
+    const { postToX, hasXCredentials } = await import("./x-api");
+    if (!hasXCredentials()) {
+      return res.status(400).json({ success: false, error: "X credentials not configured" });
+    }
+    const testText = `Nami agent system test - ${new Date().toISOString().slice(0, 16)}`;
+    const result = await postToX(testText);
+    res.json(result);
+  });
+
+  app.post("/api/x/post", async (req, res) => {
+    const { postToX, hasXCredentials } = await import("./x-api");
+    if (!hasXCredentials()) {
+      return res.status(400).json({ success: false, error: "X credentials not configured" });
+    }
+    const { text } = req.body;
+    if (!text || typeof text !== "string") {
+      return res.status(400).json({ success: false, error: "text is required" });
+    }
+    const result = await postToX(text);
+    res.json(result);
+  });
+
+  app.post("/api/x/delete", async (req, res) => {
+    const { deleteFromX, hasXCredentials } = await import("./x-api");
+    if (!hasXCredentials()) {
+      return res.status(400).json({ success: false, error: "X credentials not configured" });
+    }
+    const { tweetId } = req.body;
+    if (!tweetId || typeof tweetId !== "string") {
+      return res.status(400).json({ success: false, error: "tweetId is required" });
+    }
+    const result = await deleteFromX(tweetId);
+    res.json(result);
+  });
+
   return httpServer;
 }

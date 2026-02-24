@@ -21,6 +21,11 @@ export function isValidToolName(name: string | null | undefined): boolean {
  * @returns Execution result or error message
  */
 export async function safeExecuteTool(name: string, args: Record<string, any>): Promise<string> {
+  // Additional safety check for empty strings
+  if (typeof name === 'string' && name.trim() === '') {
+    return "Error: Empty tool name provided. Tool name must be a non-empty string.";
+  }
+  
   if (!isValidToolName(name)) {
     return `Error: Invalid tool name provided. Expected a non-empty string, got: ${typeof name === 'string' ? `'${name}'` : String(name)}`;
   }

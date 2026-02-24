@@ -35,7 +35,7 @@ export interface ToolParameter {
 export interface NamiTool {
   name: string;
   description: string;
-  category: "filesystem" | "execution" | "system" | "browser" | "google" | "mcp";
+  category: "filesystem" | "execution" | "system" | "browser" | "google" | "mcp" | "social";
   enabled: boolean;
   parameters: {
     type: "object";
@@ -999,7 +999,87 @@ const docsWriteTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool];
+const xPostTweetTool: NamiTool = {
+  name: "x_post_tweet",
+  description: "Post a tweet to X (Twitter). Uses OAuth 1.0a to post to the authenticated account. Maximum 280 characters. Use this to share updates, announcements, or results on X.",
+  category: "social",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      text: {
+        type: "string",
+        description: "The tweet text to post (max 280 characters)",
+      },
+    },
+    required: ["text"],
+  },
+  execute: async (args) => {
+    const { postToX, hasXCredentials, getMissingCredentials } = await import("./x-api");
+    if (!hasXCredentials()) {
+      return `Error: X (Twitter) credentials not configured. Missing: ${getMissingCredentials().join(", ")}. Set them in environment secrets.`;
+    }
+    const text = args.text as string;
+    if (!text) return "Error: Tweet text is required.";
+    const result = await postToX(text);
+    if (result.success) {
+      return `Tweet posted successfully! Tweet ID: ${result.tweetId}. URL: https://x.com/i/status/${result.tweetId}`;
+    }
+    return `Error posting tweet: ${result.error}`;
+  },
+};
+
+const xDeleteTweetTool: NamiTool = {
+  name: "x_delete_tweet",
+  description: "Delete a tweet from X (Twitter) by its tweet ID. Use this to remove previously posted tweets.",
+  category: "social",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      tweet_id: {
+        type: "string",
+        description: "The ID of the tweet to delete",
+      },
+    },
+    required: ["tweet_id"],
+  },
+  execute: async (args) => {
+    const { deleteFromX, hasXCredentials, getMissingCredentials } = await import("./x-api");
+    if (!hasXCredentials()) {
+      return `Error: X (Twitter) credentials not configured. Missing: ${getMissingCredentials().join(", ")}.`;
+    }
+    const tweetId = args.tweet_id as string;
+    if (!tweetId) return "Error: Tweet ID is required.";
+    const result = await deleteFromX(tweetId);
+    if (result.success) {
+      return `Tweet ${tweetId} deleted successfully.`;
+    }
+    return `Error deleting tweet: ${result.error}`;
+  },
+};
+
+const xGetStatusTool: NamiTool = {
+  name: "x_get_status",
+  description: "Check X (Twitter) integration status. Returns whether credentials are configured and which ones are missing.",
+  category: "social",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {},
+    required: [],
+  },
+  execute: async () => {
+    const { getXStatus } = await import("./x-api");
+    const status = getXStatus();
+    if (status.configured) {
+      return "X (Twitter) integration is fully configured and ready to post.";
+    }
+    return `X (Twitter) integration is NOT configured. Missing secrets: ${status.missing.join(", ")}. Add them to environment secrets.`;
+  },
+};
+
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool];
 
 export function getTools(): NamiTool[] {
   return allTools;
@@ -1032,6 +1112,11 @@ export function getToolsForLLM(): Array<{ type: "function"; function: { name: st
 }
 
 export async function executeToolCall(name: string, args: Record<string, any>): Promise<string> {
+  // Defensive validation - ensure name is not empty or invalid
+  if (!name || typeof name !== 'string' || name.trim() === '') {
+    return `Error: Invalid tool name provided. Tool name must be a non-empty string.`;
+  }
+  
   const tool = getToolByName(name);
   if (!tool) return `Error: Unknown tool '${name}'.`;
   if (!tool.enabled) return `Error: Tool '${name}' is currently disabled.`;

@@ -11,7 +11,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Switch } from "@/components/ui/switch";
-import { Settings2, Key, Waypoints, Globe, Save, ExternalLink, Search, Check, Loader2, Brain } from "lucide-react";
+import { Settings2, Key, Waypoints, Globe, Save, ExternalLink, Search, Check, Loader2, Brain, Twitter, CheckCircle, XCircle, AlertTriangle, Send } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import type { NamiConfig } from "@shared/schema";
 
 interface OpenRouterModel {
@@ -525,6 +526,8 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      <XIntegrationCard />
+
       <div className="flex justify-end">
         <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-settings">
           <Save className="w-4 h-4 mr-2" />
@@ -532,5 +535,152 @@ export default function Settings() {
         </Button>
       </div>
     </div>
+  );
+}
+
+function XIntegrationCard() {
+  const { toast } = useToast();
+  const [tweetText, setTweetText] = useState("");
+
+  const { data: xStatus, isLoading } = useQuery<{ configured: boolean; missing: string[] }>({
+    queryKey: ["/api/x/status"],
+  });
+
+  const testMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/x/test");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.success) {
+        toast({ title: "Test tweet posted", description: `Tweet ID: ${data.tweetId}` });
+      } else {
+        toast({ title: "Test failed", description: data.error, variant: "destructive" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "Test failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const postMutation = useMutation({
+    mutationFn: async (text: string) => {
+      const res = await apiRequest("POST", "/api/x/post", { text });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.success) {
+        setTweetText("");
+        toast({ title: "Tweet posted", description: `Tweet ID: ${data.tweetId}` });
+      } else {
+        toast({ title: "Post failed", description: data.error, variant: "destructive" });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "Post failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const configured = xStatus?.configured ?? false;
+  const missing = xStatus?.missing ?? [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Twitter className="w-4 h-4 text-primary" />
+          <CardTitle className="text-sm">X (Twitter) Integration</CardTitle>
+          {!isLoading && (
+            <Badge variant={configured ? "default" : "secondary"} className="text-[9px] ml-auto no-default-active-elevate">
+              {configured ? "Connected" : "Not Configured"}
+            </Badge>
+          )}
+        </div>
+        <CardDescription className="text-[11px]">
+          Post tweets from Nami, spawns, and swarms via OAuth 1.0a. Tools: x_post_tweet, x_delete_tweet, x_get_status.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <Label className="text-xs">Credential Status</Label>
+          {isLoading ? (
+            <Skeleton className="h-8 w-full" />
+          ) : configured ? (
+            <div className="flex items-center gap-2 text-xs text-emerald-400">
+              <CheckCircle className="w-3.5 h-3.5" />
+              <span>All 4 credentials configured (API Key, API Secret, Access Token, Access Token Secret)</span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2 text-xs text-amber-400">
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>Missing credentials: {missing.join(", ")}</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Add X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, and X_ACCESS_TOKEN_SECRET as environment secrets.
+                Get them from <a href="https://developer.x.com" target="_blank" rel="noopener noreferrer" className="text-primary underline">developer.x.com</a>.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {configured && (
+          <>
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs">Test Connection</Label>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => testMutation.mutate()}
+                disabled={testMutation.isPending}
+                data-testid="button-x-test"
+              >
+                {testMutation.isPending ? (
+                  <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Posting test tweet...</>
+                ) : (
+                  <><Send className="w-3 h-3 mr-1.5" /> Send Test Tweet</>
+                )}
+              </Button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label className="text-xs">Quick Post</Label>
+              <Textarea
+                value={tweetText}
+                onChange={(e) => setTweetText(e.target.value)}
+                placeholder="Type a tweet..."
+                className="text-xs min-h-[60px] resize-none"
+                maxLength={280}
+                data-testid="input-x-tweet"
+              />
+              <div className="flex items-center justify-between">
+                <span className={`text-[10px] ${tweetText.length > 260 ? "text-amber-400" : "text-muted-foreground"}`}>
+                  {tweetText.length}/280
+                </span>
+                <Button
+                  size="sm"
+                  onClick={() => postMutation.mutate(tweetText)}
+                  disabled={!tweetText.trim() || postMutation.isPending}
+                  data-testid="button-x-post"
+                >
+                  {postMutation.isPending ? (
+                    <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Posting...</>
+                  ) : (
+                    <><Send className="w-3 h-3 mr-1.5" /> Post to X</>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="border-t pt-3">
+          <p className="text-[10px] text-muted-foreground">
+            Nami and swarm agents can use the <span className="font-mono">x_post_tweet</span>, <span className="font-mono">x_delete_tweet</span>, and <span className="font-mono">x_get_status</span> tools
+            to interact with your X account autonomously. Enable/disable them on the Tools page.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
