@@ -3,6 +3,9 @@ import { storage } from "./storage";
 import { log } from "./index";
 import { getToolsForLLM, executeToolCall, getEnabledTools } from "./tools";
 import { engineMind } from "./engine-mind";
+import { createGeminiClient } from "./gemini";
+
+export type InferenceProvider = "openrouter" | "gemini";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -19,6 +22,7 @@ export interface ChatOptions {
   stream?: boolean;
   useTools?: boolean;
   maxToolRounds?: number;
+  provider?: InferenceProvider;
 }
 
 export async function getApiKey(): Promise<string> {
@@ -94,12 +98,20 @@ export function calculateCost(model: string, promptTokens: number, completionTok
   return (promptTokens * pricing.prompt) + (completionTokens * pricing.completion);
 }
 
+export async function createInferenceClient(provider: InferenceProvider): Promise<OpenAI> {
+  if (provider === "gemini") {
+    return createGeminiClient();
+  }
+  return createOpenRouterClient();
+}
+
 export async function chatCompletion(
   messages: ChatMessage[],
   options: ChatOptions = {}
 ): Promise<ChatResult> {
   const config = await storage.getConfig();
-  const client = await createOpenRouterClient();
+  const provider = options.provider || config.namiProvider || "openrouter";
+  const client = await createInferenceClient(provider);
 
   const model = options.model || config.defaultModel;
   const temperature = options.temperature ?? config.temperature;
@@ -111,7 +123,7 @@ export async function chatCompletion(
   const hasTools = useTools && enabledTools.length > 0;
   const toolDefs = hasTools ? getToolsForLLM() : undefined;
 
-  log(`OpenRouter request: model=${model}, messages=${messages.length}, tools=${hasTools ? enabledTools.length : 0}`, "openrouter");
+  log(`${provider} request: model=${model}, messages=${messages.length}, tools=${hasTools ? enabledTools.length : 0}`, "openrouter");
 
   const allToolCalls: Array<{ name: string; args: any; result: string }> = [];
   let totalTokens = 0;
@@ -196,7 +208,7 @@ export async function chatCompletion(
       finalContent = `Executed ${allToolCalls.length} tool call(s): ${allToolCalls.map((tc) => tc.name).join(", ")}.`;
     }
 
-    log(`OpenRouter response: ${totalTokens} tokens (${totalPromptTokens}p/${totalCompletionTokens}c), ${allToolCalls.length} tool calls`, "openrouter");
+    log(`${provider} response: ${totalTokens} tokens (${totalPromptTokens}p/${totalCompletionTokens}c), ${allToolCalls.length} tool calls`, "openrouter");
 
     return {
       content: finalContent,
@@ -207,8 +219,8 @@ export async function chatCompletion(
       toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
   } catch (error: any) {
-    log(`OpenRouter error: ${error.message}`, "openrouter");
-    throw new Error(`OpenRouter API error: ${error.message}`);
+    log(`${provider} error: ${error.message}`, "openrouter");
+    throw new Error(`${provider} API error: ${error.message}`);
   }
 }
 

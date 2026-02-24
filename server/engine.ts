@@ -513,7 +513,7 @@ export async function createSpawn(data: {
 
 export async function createSwarmQueen(swarmId: string, goal: string): Promise<Agent> {
   const config = await storage.getConfig();
-  const queenModel = config.swarmQueenModel || config.defaultModel;
+  const queenModel = config.engineMindModel || config.defaultModel;
   const queen = await storage.createAgent({
     name: `SwarmQueen-${swarmId.substring(0, 8)}`,
     role: "swarm_queen",
@@ -990,12 +990,13 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
     conversationHistory.push({ role: "user", content: cycleContext });
 
     try {
-      const queenModel = config.swarmQueenModel || config.defaultModel;
+      const queenModel = config.engineMindModel || config.defaultModel;
       const queenResult = await chatCompletion(conversationHistory, {
         model: queenModel,
         maxTokens: 2048,
         useTools: true,
         maxToolRounds: 3,
+        provider: config.engineProvider || "openrouter",
       });
       const { content, tokensUsed } = queenResult;
       await recordUsage(queenResult, "swarm", swarmId, queen.id);

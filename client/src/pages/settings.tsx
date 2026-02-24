@@ -11,11 +11,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Switch } from "@/components/ui/switch";
-import { Settings2, Key, Waypoints, Globe, Save, ExternalLink, Search, Check, Loader2, Brain, Twitter, CheckCircle, XCircle, AlertTriangle, Send } from "lucide-react";
+import { Settings2, Key, Waypoints, Globe, Save, ExternalLink, Search, Check, Loader2, Brain, Twitter, CheckCircle, XCircle, AlertTriangle, Send, Sparkles } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import type { NamiConfig } from "@shared/schema";
 
-interface OpenRouterModel {
+interface ModelInfo {
   id: string;
   name: string;
   context_length: number;
@@ -25,17 +25,159 @@ interface OpenRouterModel {
   };
 }
 
+type Provider = "openrouter" | "gemini";
+
+function ProviderToggle({ value, onChange, testId }: { value: Provider; onChange: (v: Provider) => void; testId: string }) {
+  return (
+    <div className="flex rounded-md border border-input overflow-hidden" data-testid={testId}>
+      <button
+        type="button"
+        className={`flex-1 px-3 py-1.5 text-xs font-medium transition-colors ${value === "openrouter" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-accent"}`}
+        onClick={() => onChange("openrouter")}
+        data-testid={`${testId}-openrouter`}
+      >
+        OpenRouter
+      </button>
+      <button
+        type="button"
+        className={`flex-1 px-3 py-1.5 text-xs font-medium transition-colors ${value === "gemini" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-accent"}`}
+        onClick={() => onChange("gemini")}
+        data-testid={`${testId}-gemini`}
+      >
+        Gemini
+      </button>
+    </div>
+  );
+}
+
+function ModelDropdown({
+  models,
+  isLoading,
+  selectedModel,
+  onSelect,
+  allowDefault,
+  testIdPrefix,
+}: {
+  models: ModelInfo[] | undefined;
+  isLoading: boolean;
+  selectedModel: string;
+  onSelect: (id: string) => void;
+  allowDefault?: boolean;
+  testIdPrefix: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!models) return [];
+    if (!search.trim()) return models;
+    const q = search.toLowerCase();
+    return models.filter(
+      (m) => m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q))
+    );
+  }, [models, search]);
+
+  const displayName = useMemo(() => {
+    if (allowDefault && !selectedModel) return "Same as Nami model";
+    if (!models) return selectedModel || "Select model";
+    const found = models.find((m) => m.id === selectedModel);
+    return found ? found.name || found.id : selectedModel || "Select model";
+  }, [models, selectedModel, allowDefault]);
+
+  return (
+    <div className="relative">
+      <Button
+        variant="outline"
+        className="w-full justify-between font-mono text-xs"
+        onClick={() => setOpen(!open)}
+        data-testid={`${testIdPrefix}-trigger`}
+      >
+        <span className="truncate">{displayName}</span>
+        <Search className="w-3 h-3 ml-2 shrink-0 text-muted-foreground" />
+      </Button>
+
+      {open && (
+        <div className="absolute top-full left-0 right-0 z-50 mt-1 border rounded-md bg-popover shadow-md">
+          <div className="p-2 border-b">
+            <div className="flex items-center gap-2 px-2">
+              <Search className="w-3 h-3 text-muted-foreground shrink-0" />
+              <input
+                type="text"
+                placeholder="Search models..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+                autoFocus
+                data-testid={`${testIdPrefix}-search`}
+              />
+            </div>
+          </div>
+          <ScrollArea className="h-[300px]">
+            <div className="p-1">
+              {allowDefault && (
+                <button
+                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left text-xs hover-elevate cursor-pointer"
+                  onClick={() => { onSelect(""); setOpen(false); setSearch(""); }}
+                  data-testid={`${testIdPrefix}-option-default`}
+                >
+                  <Check className={`w-3 h-3 shrink-0 ${!selectedModel ? "text-primary" : "invisible"}`} />
+                  <span className="font-medium">Same as Nami model</span>
+                </button>
+              )}
+              {isLoading ? (
+                <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Loading models...
+                </div>
+              ) : filtered.length === 0 ? (
+                <div className="py-6 text-center text-xs text-muted-foreground">
+                  No models found
+                </div>
+              ) : (
+                filtered.map((m) => (
+                  <button
+                    key={m.id}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left text-xs hover-elevate cursor-pointer"
+                    onClick={() => { onSelect(m.id); setOpen(false); setSearch(""); }}
+                    data-testid={`${testIdPrefix}-option-${m.id}`}
+                  >
+                    <Check className={`w-3 h-3 shrink-0 ${selectedModel === m.id ? "text-primary" : "invisible"}`} />
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="font-medium truncate">{m.name || m.id}</span>
+                      <span className="text-[10px] text-muted-foreground font-mono truncate">{m.id}</span>
+                    </div>
+                    {m.context_length > 0 && (
+                      <Badge variant="secondary" className="text-[9px] shrink-0 no-default-active-elevate">
+                        {(m.context_length / 1000).toFixed(0)}k ctx
+                      </Badge>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Settings() {
   const { data: config, isLoading } = useQuery<NamiConfig>({ queryKey: ["/api/config"] });
-  const { data: models, isLoading: modelsLoading } = useQuery<OpenRouterModel[]>({
+  const { data: openRouterModels, isLoading: orModelsLoading } = useQuery<ModelInfo[]>({
     queryKey: ["/api/models"],
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: geminiModels, isLoading: geminiModelsLoading } = useQuery<ModelInfo[]>({
+    queryKey: ["/api/models/gemini"],
     staleTime: 5 * 60 * 1000,
   });
   const { toast } = useToast();
 
   const [apiKey, setApiKey] = useState("");
+  const [namiProvider, setNamiProvider] = useState<Provider>("openrouter");
+  const [engineProvider, setEngineProvider] = useState<Provider>("openrouter");
   const [defaultModel, setDefaultModel] = useState("openai/gpt-4o");
-  const [swarmQueenModel, setSwarmQueenModel] = useState("");
   const [engineMindModel, setEngineMindModel] = useState("");
   const [engineMindEnabled, setEngineMindEnabled] = useState(false);
   const [siteUrl, setSiteUrl] = useState("https://agentnami.com");
@@ -43,18 +185,13 @@ export default function Settings() {
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(10);
   const [maxTokens, setMaxTokens] = useState(4096);
   const [temperature, setTemperature] = useState(0.7);
-  const [modelSearch, setModelSearch] = useState("");
-  const [modelDropdownOpen, setModelDropdownOpen] = useState(false);
-  const [queenModelSearch, setQueenModelSearch] = useState("");
-  const [queenModelDropdownOpen, setQueenModelDropdownOpen] = useState(false);
-  const [mindModelSearch, setMindModelSearch] = useState("");
-  const [mindModelDropdownOpen, setMindModelDropdownOpen] = useState(false);
 
   useEffect(() => {
     if (config) {
       setApiKey(config.openRouterApiKey || "");
+      setNamiProvider(config.namiProvider || "openrouter");
+      setEngineProvider(config.engineProvider || "openrouter");
       setDefaultModel(config.defaultModel);
-      setSwarmQueenModel(config.swarmQueenModel || "");
       setEngineMindModel(config.engineMindModel || "");
       setEngineMindEnabled(config.engineMindEnabled || false);
       setSiteUrl(config.siteUrl);
@@ -65,59 +202,18 @@ export default function Settings() {
     }
   }, [config]);
 
-  const filteredModels = useMemo(() => {
-    if (!models) return [];
-    if (!modelSearch.trim()) return models;
-    const q = modelSearch.toLowerCase();
-    return models.filter(
-      (m) => m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q))
-    );
-  }, [models, modelSearch]);
-
-  const selectedModelName = useMemo(() => {
-    if (!models) return defaultModel;
-    const found = models.find((m) => m.id === defaultModel);
-    return found ? found.name || found.id : defaultModel;
-  }, [models, defaultModel]);
-
-  const filteredQueenModels = useMemo(() => {
-    if (!models) return [];
-    if (!queenModelSearch.trim()) return models;
-    const q = queenModelSearch.toLowerCase();
-    return models.filter(
-      (m) => m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q))
-    );
-  }, [models, queenModelSearch]);
-
-  const selectedQueenModelName = useMemo(() => {
-    if (!swarmQueenModel) return "Same as default model";
-    if (!models) return swarmQueenModel;
-    const found = models.find((m) => m.id === swarmQueenModel);
-    return found ? found.name || found.id : swarmQueenModel;
-  }, [models, swarmQueenModel]);
-
-  const filteredMindModels = useMemo(() => {
-    if (!models) return [];
-    if (!mindModelSearch.trim()) return models;
-    const q = mindModelSearch.toLowerCase();
-    return models.filter(
-      (m) => m.id.toLowerCase().includes(q) || (m.name && m.name.toLowerCase().includes(q))
-    );
-  }, [models, mindModelSearch]);
-
-  const selectedMindModelName = useMemo(() => {
-    if (!engineMindModel) return "Same as default model";
-    if (!models) return engineMindModel;
-    const found = models.find((m) => m.id === engineMindModel);
-    return found ? found.name || found.id : engineMindModel;
-  }, [models, engineMindModel]);
+  const namiModels = namiProvider === "gemini" ? geminiModels : openRouterModels;
+  const namiModelsLoading = namiProvider === "gemini" ? geminiModelsLoading : orModelsLoading;
+  const engineModels = engineProvider === "gemini" ? geminiModels : openRouterModels;
+  const engineModelsLoading = engineProvider === "gemini" ? geminiModelsLoading : orModelsLoading;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("PUT", "/api/config", {
         openRouterApiKey: apiKey || undefined,
+        namiProvider,
+        engineProvider,
         defaultModel,
-        swarmQueenModel,
         engineMindModel,
         engineMindEnabled,
         siteUrl,
@@ -137,7 +233,7 @@ export default function Settings() {
     },
   });
 
-  const testMutation = useMutation({
+  const testOpenRouterMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/config/test");
       return res.json();
@@ -147,6 +243,19 @@ export default function Settings() {
     },
     onError: (err: Error) => {
       toast({ title: "Connection failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const testGeminiMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/config/test-gemini");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      toast({ title: "Gemini connected", description: data.message || "Gemini API is reachable." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Gemini connection failed", description: err.message, variant: "destructive" });
     },
   });
 
@@ -172,15 +281,15 @@ export default function Settings() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Key className="w-4 h-4 text-primary" />
-            <CardTitle className="text-sm">OpenRouter API Key</CardTitle>
+            <CardTitle className="text-sm">API Credentials</CardTitle>
           </div>
           <CardDescription className="text-[11px]">
-            Your key for accessing 400+ AI models via OpenRouter.ai. Supports BYOK for enterprise deployment.
+            Configure API access for OpenRouter (400+ models) and/or Google Gemini (OAuth2).
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="api-key" className="text-xs">API Key</Label>
+            <Label htmlFor="api-key" className="text-xs">OpenRouter API Key</Label>
             <div className="flex gap-2">
               <Input
                 id="api-key"
@@ -191,16 +300,41 @@ export default function Settings() {
                 className="font-mono text-xs"
                 data-testid="input-api-key"
               />
-              <Button variant="outline" onClick={() => testMutation.mutate()} disabled={testMutation.isPending} data-testid="button-test-connection">
-                {testMutation.isPending ? "Testing..." : "Test"}
+              <Button variant="outline" onClick={() => testOpenRouterMutation.mutate()} disabled={testOpenRouterMutation.isPending} data-testid="button-test-openrouter">
+                {testOpenRouterMutation.isPending ? "Testing..." : "Test"}
               </Button>
             </div>
+            <div className="flex items-center gap-2">
+              <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary flex items-center gap-1">
+                Get an API key <ExternalLink className="w-3 h-3" />
+              </a>
+              <Badge variant="outline" className="text-[9px]">BYOK</Badge>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer" className="text-[11px] text-primary flex items-center gap-1">
-              Get an API key <ExternalLink className="w-3 h-3" />
-            </a>
-            <Badge variant="outline" className="text-[9px]">BYOK</Badge>
+
+          <div className="border-t pt-4 flex flex-col gap-2">
+            <Label className="text-xs flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3" />
+              Google Gemini (OAuth2)
+            </Label>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => testGeminiMutation.mutate()}
+                disabled={testGeminiMutation.isPending}
+                className="text-xs"
+                data-testid="button-test-gemini"
+              >
+                {testGeminiMutation.isPending ? (
+                  <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Testing...</>
+                ) : (
+                  "Test Gemini Connection"
+                )}
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Uses GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN environment secrets for OAuth2 access.
+            </p>
           </div>
         </CardContent>
       </Card>
@@ -209,171 +343,28 @@ export default function Settings() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Waypoints className="w-4 h-4 text-primary" />
-            <CardTitle className="text-sm">Model Configuration</CardTitle>
+            <CardTitle className="text-sm">Nami Inference</CardTitle>
           </div>
           <CardDescription className="text-[11px]">
-            Default model and inference parameters for new agents. {models ? `${models.length} models available.` : ""}
+            Provider and model for Nami chat, heartbeat, and spawn agents.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
-            <Label className="text-xs">Default Model</Label>
-            <div className="relative">
-              <Button
-                variant="outline"
-                className="w-full justify-between font-mono text-xs"
-                onClick={() => setModelDropdownOpen(!modelDropdownOpen)}
-                data-testid="select-default-model"
-              >
-                <span className="truncate">{selectedModelName}</span>
-                <Search className="w-3 h-3 ml-2 shrink-0 text-muted-foreground" />
-              </Button>
-
-              {modelDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 z-50 mt-1 border rounded-md bg-popover shadow-md">
-                  <div className="p-2 border-b">
-                    <div className="flex items-center gap-2 px-2">
-                      <Search className="w-3 h-3 text-muted-foreground shrink-0" />
-                      <input
-                        type="text"
-                        placeholder="Search models..."
-                        value={modelSearch}
-                        onChange={(e) => setModelSearch(e.target.value)}
-                        className="flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-                        autoFocus
-                        data-testid="input-model-search"
-                      />
-                    </div>
-                  </div>
-                  <ScrollArea className="h-[300px]">
-                    <div className="p-1">
-                      {modelsLoading ? (
-                        <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted-foreground">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Loading models...
-                        </div>
-                      ) : filteredModels.length === 0 ? (
-                        <div className="py-6 text-center text-xs text-muted-foreground">
-                          No models found
-                        </div>
-                      ) : (
-                        filteredModels.map((m) => (
-                          <button
-                            key={m.id}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left text-xs hover-elevate cursor-pointer"
-                            onClick={() => {
-                              setDefaultModel(m.id);
-                              setModelDropdownOpen(false);
-                              setModelSearch("");
-                            }}
-                            data-testid={`option-model-${m.id}`}
-                          >
-                            <Check className={`w-3 h-3 shrink-0 ${defaultModel === m.id ? "text-primary" : "invisible"}`} />
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="font-medium truncate">{m.name || m.id}</span>
-                              <span className="text-[10px] text-muted-foreground font-mono truncate">{m.id}</span>
-                            </div>
-                            {m.context_length && (
-                              <Badge variant="secondary" className="text-[9px] shrink-0 no-default-active-elevate">
-                                {(m.context_length / 1000).toFixed(0)}k ctx
-                              </Badge>
-                            )}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </ScrollArea>
-                </div>
-              )}
-            </div>
-            <span className="text-[10px] text-muted-foreground font-mono">{defaultModel}</span>
+            <Label className="text-xs">Provider</Label>
+            <ProviderToggle value={namiProvider} onChange={setNamiProvider} testId="toggle-nami-provider" />
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label className="text-xs">SwarmQueen Model</Label>
-            <div className="relative">
-              <Button
-                variant="outline"
-                className="w-full justify-between font-mono text-xs"
-                onClick={() => setQueenModelDropdownOpen(!queenModelDropdownOpen)}
-                data-testid="select-queen-model"
-              >
-                <span className="truncate">{selectedQueenModelName}</span>
-                <Search className="w-3 h-3 ml-2 shrink-0 text-muted-foreground" />
-              </Button>
-
-              {queenModelDropdownOpen && (
-                <div className="absolute top-full left-0 right-0 z-50 mt-1 border rounded-md bg-popover shadow-md">
-                  <div className="p-2 border-b">
-                    <div className="flex items-center gap-2 px-2">
-                      <Search className="w-3 h-3 text-muted-foreground shrink-0" />
-                      <input
-                        type="text"
-                        placeholder="Search models..."
-                        value={queenModelSearch}
-                        onChange={(e) => setQueenModelSearch(e.target.value)}
-                        className="w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground"
-                        autoFocus
-                        data-testid="input-queen-model-search"
-                      />
-                    </div>
-                  </div>
-                  <ScrollArea className="h-[300px]">
-                    <div className="p-1">
-                      <button
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left text-xs hover-elevate cursor-pointer"
-                        onClick={() => {
-                          setSwarmQueenModel("");
-                          setQueenModelDropdownOpen(false);
-                          setQueenModelSearch("");
-                        }}
-                        data-testid="option-queen-model-default"
-                      >
-                        <Check className={`w-3 h-3 shrink-0 ${!swarmQueenModel ? "text-primary" : "invisible"}`} />
-                        <span className="font-medium">Same as default model</span>
-                      </button>
-                      {modelsLoading ? (
-                        <div className="flex items-center justify-center py-6 gap-2 text-xs text-muted-foreground">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                          Loading models...
-                        </div>
-                      ) : filteredQueenModels.length === 0 ? (
-                        <div className="py-6 text-center text-xs text-muted-foreground">
-                          No models found
-                        </div>
-                      ) : (
-                        filteredQueenModels.map((m) => (
-                          <button
-                            key={m.id}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 rounded-sm text-left text-xs hover-elevate cursor-pointer"
-                            onClick={() => {
-                              setSwarmQueenModel(m.id);
-                              setQueenModelDropdownOpen(false);
-                              setQueenModelSearch("");
-                            }}
-                            data-testid={`option-queen-model-${m.id}`}
-                          >
-                            <Check className={`w-3 h-3 shrink-0 ${swarmQueenModel === m.id ? "text-primary" : "invisible"}`} />
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className="font-medium truncate">{m.name || m.id}</span>
-                              <span className="text-[10px] text-muted-foreground font-mono truncate">{m.id}</span>
-                            </div>
-                            {m.context_length && (
-                              <Badge variant="secondary" className="text-[9px] shrink-0 no-default-active-elevate">
-                                {(m.context_length / 1000).toFixed(0)}k ctx
-                              </Badge>
-                            )}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </ScrollArea>
-                </div>
-              )}
-            </div>
-            <span className="text-[10px] text-muted-foreground">
-              {swarmQueenModel ? <span className="font-mono">{swarmQueenModel}</span> : "Uses the default model when empty"}
-            </span>
+            <Label className="text-xs">Default Model</Label>
+            <ModelDropdown
+              models={namiModels}
+              isLoading={namiModelsLoading}
+              selectedModel={defaultModel}
+              onSelect={setDefaultModel}
+              testIdPrefix="select-default-model"
+            />
+            <span className="text-[10px] text-muted-foreground font-mono">{defaultModel}</span>
           </div>
 
           <div className="flex flex-col gap-2">
@@ -422,10 +413,10 @@ export default function Settings() {
         <CardHeader>
           <div className="flex items-center gap-2">
             <Brain className="w-4 h-4 text-primary" />
-            <CardTitle className="text-sm">Engine Mind (Pi Framework)</CardTitle>
+            <CardTitle className="text-sm">Engine Mind + Swarm Queens</CardTitle>
           </div>
           <CardDescription className="text-[11px]">
-            Self-healing tool execution, spawn validation, and auto-compaction via Pi agent framework.
+            Provider and model for Engine Mind (Pi framework) and all Swarm Queen agents. Self-healing, spawn validation, and auto-compaction.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -439,66 +430,23 @@ export default function Settings() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label className="text-xs">Engine Mind Model</Label>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setMindModelDropdownOpen(!mindModelDropdownOpen)}
-                className="flex items-center justify-between w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                data-testid="select-mind-model"
-              >
-                <span className="truncate">{selectedMindModelName}</span>
-                <Search className="w-3 h-3 ml-2 shrink-0 opacity-50" />
-              </button>
-              {mindModelDropdownOpen && (
-                <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md">
-                  <div className="p-2">
-                    <Input
-                      placeholder="Search models..."
-                      value={mindModelSearch}
-                      onChange={(e) => setMindModelSearch(e.target.value)}
-                      className="h-7 text-xs"
-                      autoFocus
-                      data-testid="input-mind-model-search"
-                    />
-                  </div>
-                  <ScrollArea className="h-[300px]">
-                    <div className="p-1">
-                      <button
-                        className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-xs hover:bg-accent"
-                        onClick={() => { setEngineMindModel(""); setMindModelDropdownOpen(false); }}
-                      >
-                        {!engineMindModel && <Check className="w-3 h-3" />}
-                        <span className={!engineMindModel ? "" : "ml-5"}>Same as default model</span>
-                      </button>
-                      {modelsLoading ? (
-                        <div className="flex items-center justify-center py-4">
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        </div>
-                      ) : (
-                        filteredMindModels.map((m) => (
-                          <button
-                            key={m.id}
-                            className="flex items-center gap-2 w-full rounded px-2 py-1.5 text-xs hover:bg-accent text-left"
-                            onClick={() => { setEngineMindModel(m.id); setMindModelDropdownOpen(false); setMindModelSearch(""); }}
-                          >
-                            {engineMindModel === m.id && <Check className="w-3 h-3 shrink-0" />}
-                            <span className={`truncate ${engineMindModel === m.id ? "" : "ml-5"}`}>{m.name || m.id}</span>
-                            {m.context_length && (
-                              <Badge variant="secondary" className="text-[9px] shrink-0 no-default-active-elevate">
-                                {(m.context_length / 1000).toFixed(0)}k ctx
-                              </Badge>
-                            )}
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </ScrollArea>
-                </div>
-              )}
-            </div>
+            <Label className="text-xs">Provider</Label>
+            <ProviderToggle value={engineProvider} onChange={setEngineProvider} testId="toggle-engine-provider" />
+            <span className="text-[10px] text-muted-foreground">This provider is shared by Engine Mind and all Swarm Queens</span>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs">Model</Label>
+            <ModelDropdown
+              models={engineModels}
+              isLoading={engineModelsLoading}
+              selectedModel={engineMindModel}
+              onSelect={setEngineMindModel}
+              allowDefault
+              testIdPrefix="select-engine-model"
+            />
             <span className="text-[10px] text-muted-foreground">
-              {engineMindModel ? <span className="font-mono">{engineMindModel}</span> : "Uses the default model when empty"}
+              {engineMindModel ? <span className="font-mono">{engineMindModel}</span> : "Uses the Nami default model when empty"}
             </span>
           </div>
         </CardContent>

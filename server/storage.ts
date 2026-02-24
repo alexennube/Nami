@@ -141,8 +141,10 @@ export class MemStorage implements IStorage {
   constructor() {
     const defaultConfig: NamiConfig = {
       openRouterApiKey: process.env.OPENROUTER_API_KEY || "",
+      geminiApiKey: "",
+      namiProvider: "openrouter",
+      engineProvider: "openrouter",
       defaultModel: "openai/gpt-4o",
-      swarmQueenModel: "openai/gpt-4o",
       engineMindModel: "qwen/qwen3-coder-flash",
       engineMindEnabled: true,
       siteUrl: "https://agentnami.com",

@@ -58,9 +58,23 @@ class EngineMind {
         return false;
       }
 
-      const apiKey = config.openRouterApiKey || process.env.OPENROUTER_API_KEY;
+      const engineProvider = config.engineProvider || "openrouter";
+      let apiKey: string | undefined;
+
+      if (engineProvider === "gemini") {
+        const { getGeminiAccessToken } = await import("./gemini");
+        try {
+          apiKey = await getGeminiAccessToken();
+        } catch (err: any) {
+          log(`Engine Mind: Failed to get Gemini access token: ${err.message}`, "engine-mind");
+          return false;
+        }
+      } else {
+        apiKey = config.openRouterApiKey || process.env.OPENROUTER_API_KEY;
+      }
+
       if (!apiKey) {
-        log("Engine Mind: No API key available", "engine-mind");
+        log(`Engine Mind: No API key available for provider ${engineProvider}`, "engine-mind");
         return false;
       }
 
@@ -68,20 +82,21 @@ class EngineMind {
       this.currentModel = modelId;
 
       const authStorage = AuthStorage.inMemory();
-      authStorage.setRuntimeApiKey("openrouter", apiKey);
+      const piProvider = engineProvider === "gemini" ? "google" : "openrouter";
+      authStorage.setRuntimeApiKey(piProvider, apiKey);
 
       const modelRegistry = new ModelRegistry(authStorage);
 
       let model: Model<any>;
       try {
-        const found = modelRegistry.find("openrouter", modelId);
+        const found = modelRegistry.find(piProvider, modelId);
         if (found) {
           model = found;
         } else {
-          model = getModel("openrouter", "openrouter/auto" as any);
+          model = getModel(piProvider as any, (engineProvider === "gemini" ? "gemini-2.0-flash" : "openrouter/auto") as any);
         }
       } catch {
-        model = getModel("openrouter", "openrouter/auto" as any);
+        model = getModel(piProvider as any, (engineProvider === "gemini" ? "gemini-2.0-flash" : "openrouter/auto") as any);
       }
 
       const { session } = await createAgentSession({

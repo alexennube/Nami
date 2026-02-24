@@ -6,6 +6,7 @@ import path from "path";
 import { storage } from "./storage";
 import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
+import { fetchGeminiModels, testGeminiConnection } from "./gemini";
 import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
@@ -406,7 +407,11 @@ export async function registerRoutes(
 
   app.get("/api/config", async (_req, res) => {
     const config = await storage.getConfig();
-    const safeConfig = { ...config, openRouterApiKey: config.openRouterApiKey ? "sk-or-v1-****" : "" };
+    const safeConfig = {
+      ...config,
+      openRouterApiKey: config.openRouterApiKey ? "sk-or-v1-****" : "",
+      geminiApiKey: config.geminiApiKey ? "****" : "",
+    };
     res.json(safeConfig);
   });
 
@@ -416,8 +421,18 @@ export async function registerRoutes(
       if (!updates.openRouterApiKey || updates.openRouterApiKey === "sk-or-v1-****" || updates.openRouterApiKey.length < 10) {
         delete updates.openRouterApiKey;
       }
+      if (!updates.geminiApiKey || updates.geminiApiKey === "****" || updates.geminiApiKey.length < 5) {
+        delete updates.geminiApiKey;
+      }
+      if (updates.swarmQueenModel !== undefined) {
+        delete updates.swarmQueenModel;
+      }
       const config = await storage.updateConfig(updates);
-      const safeConfig = { ...config, openRouterApiKey: config.openRouterApiKey ? "sk-or-v1-****" : "" };
+      const safeConfig = {
+        ...config,
+        openRouterApiKey: config.openRouterApiKey ? "sk-or-v1-****" : "",
+        geminiApiKey: config.geminiApiKey ? "****" : "",
+      };
       res.json(safeConfig);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -458,6 +473,28 @@ export async function registerRoutes(
       res.json(models);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/models/gemini", async (_req, res) => {
+    try {
+      const models = await fetchGeminiModels();
+      res.json(models);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/config/test-gemini", async (_req, res) => {
+    try {
+      const result = await testGeminiConnection();
+      if (result.success) {
+        res.json(result);
+      } else {
+        res.status(400).json(result);
+      }
+    } catch (error: any) {
+      res.status(500).json({ success: false, message: error.message });
     }
   });
 

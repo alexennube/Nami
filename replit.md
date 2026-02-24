@@ -6,7 +6,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 ## Architecture
 - **Frontend**: React SPA with Shadcn UI, Tailwind CSS, dark green-tinted theme, WebSocket real-time updates
 - **Backend**: Express.js + TypeScript with in-memory storage (MVP), OpenRouter client, EventBus
-- **Inference**: OpenRouter.ai API (OpenAI SDK configured with custom base URL) - BYOK support
+- **Inference**: Dual-provider: OpenRouter.ai (400+ models, BYOK) and Google Gemini (OAuth2). Both use OpenAI SDK with custom base URLs.
 - **Communication**: WebSocket for real-time events, REST API for CRUD
 - **Heartbeat**: Interval-based autonomous agent loop (like OpenClaw) - pings Nami with configurable instructions
 
@@ -26,7 +26,8 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 ## Key Files
 - `shared/schema.ts` - All TypeScript types and Zod schemas (including Thought, Memory, HeartbeatConfig, EngineState)
 - `server/engine.ts` - Core orchestration engine (EventBus, heartbeat loop, agent/swarm management, chat with Nami)
-- `server/openrouter.ts` - OpenRouter.ai BYOK client
+- `server/openrouter.ts` - OpenRouter.ai BYOK client + provider abstraction (createInferenceClient)
+- `server/gemini.ts` - Google Gemini OAuth2 client (access token refresh, model listing, test connection)
 - `server/engine-mind.ts` - Pi framework Engine Mind wrapper (self-healing, spawn validation, auto-compaction, diagnostics)
 - `server/tools.ts` - Tool registry (file_read, file_write, file_edit, file_search, file_list, shell_exec, server_restart, self_inspect, web_browse, web_search, google_workspace, ennube_mcp, create_swarm, manage_swarm) with permissions
 - `server/routes.ts` - Express API routes + WebSocket setup
@@ -50,7 +51,11 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `GET /api/engine/status` - Engine status (state, heartbeat count, model)
 - `GET /api/stats` - System statistics
 - `GET /api/events` - Activity log
-- `GET/PUT /api/config` - System configuration (BYOK API key)
+- `GET/PUT /api/config` - System configuration (BYOK API key, provider selection)
+- `POST /api/config/test` - Test OpenRouter connection
+- `POST /api/config/test-gemini` - Test Gemini OAuth2 connection
+- `GET /api/models` - List OpenRouter models
+- `GET /api/models/gemini` - List Gemini models
 - `GET /api/tools` - List available tools with status
 - `PUT /api/tools/:name/toggle` - Enable/disable individual tools
 - `GET/PUT /api/tools/permissions` - Tool permission configuration
@@ -66,6 +71,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `POST /api/x/delete` - Delete tweet by ID
 
 ## Recent Changes
+- 2026-02-24: Dual inference provider: Google Gemini (OAuth2) added alongside OpenRouter. New server/gemini.ts with OAuth2 token refresh, model listing, OpenAI-compatible client. Config schema adds namiProvider/engineProvider fields (openrouter|gemini). Settings UI redesigned with provider toggles, dynamic model lists per provider, merged Swarm Queen model into Engine Mind model. Removed swarmQueenModel (queens now share Engine Mind provider+model). API routes: GET /api/models/gemini, POST /api/config/test-gemini.
 - 2026-02-24: Self-editing capability: file_edit tool (targeted find-and-replace within files, safer than full file_write), file_search tool (grep-like search across workspace), server_restart tool (restart server after code changes). System prompt updated with self-editing workflow instructions. Agents and swarms can now surgically modify their own codebase.
 - 2026-02-24: X (Twitter) integration: server/x-api.ts OAuth 1.0a engine (post, delete tweets), 3 agent tools (x_post_tweet, x_delete_tweet, x_get_status) in "social" category, API routes (/api/x/status, test, post, delete), Settings UI card with credential status, test tweet, quick post. No external Twitter libs - built from Node crypto/https. Requires X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET secrets.
 - 2026-02-20: Documentation system: DocPage schema (slug, title, content, lastEditedBy), docs_read/docs_write agent tools, Docs page UI with markdown rendering, CRUD API routes (/api/docs), disk persistence, sidebar nav entry. README.md added for repo sharing.
@@ -111,6 +117,9 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 
 ## Environment
 - `OPENROUTER_API_KEY` - OpenRouter.ai API key (also configurable via Settings UI for BYOK)
+- `GOOGLE_CLIENT_ID` - Google OAuth2 Client ID (for Gemini API)
+- `GOOGLE_CLIENT_SECRET` - Google OAuth2 Client Secret (for Gemini API)
+- `GOOGLE_REFRESH_TOKEN` - Google OAuth2 Refresh Token (for Gemini API)
 - `SESSION_SECRET` - Session secret
 - `ENNUBE_MCP_APIKEY` - Ennube AI MCP server API key
 
