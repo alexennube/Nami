@@ -219,6 +219,239 @@ const fileWriteTool: NamiTool = {
   },
 };
 
+const fileEditTool: NamiTool = {
+  name: "file_edit",
+  description: "Make a targeted edit to a specific section of a file by finding and replacing text. Much safer than file_write for modifying existing files because it only changes the targeted section. Use this for surgical code changes like adding imports, modifying functions, updating config values, or inserting new code blocks. Always use file_read first to see the exact text you want to replace.",
+  category: "filesystem",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Relative path to the file from the workspace root",
+      },
+      old_text: {
+        type: "string",
+        description: "The exact text to find in the file (must match precisely, including whitespace and indentation). Include enough surrounding context (5+ lines) to ensure a unique match.",
+      },
+      new_text: {
+        type: "string",
+        description: "The replacement text. Use empty string to delete the matched section.",
+      },
+      replace_all: {
+        type: "boolean",
+        description: "If true, replace ALL occurrences. If false (default), replace only the first occurrence and fail if old_text appears multiple times.",
+      },
+    },
+    required: ["path", "old_text", "new_text"],
+  },
+  execute: async (args) => {
+    if (!permissions.fileWrite) return "Error: file_write permission is disabled.";
+
+    const filePath = args.path as string;
+    if (!isWriteAllowed(filePath)) return `Error: Write access to '${filePath}' is restricted.`;
+
+    const resolved = resolvePath(filePath);
+    if (!fs.existsSync(resolved)) return `Error: File '${filePath}' not found. Use file_write to create new files.`;
+
+    const stat = fs.statSync(resolved);
+    if (stat.isDirectory()) return `Error: '${filePath}' is a directory.`;
+    if (stat.size > permissions.maxFileSize) return `Error: File too large for editing (${stat.size} bytes, max ${permissions.maxFileSize}). Use file_write for large files.`;
+
+    const content = fs.readFileSync(resolved, "utf-8");
+    const oldText = args.old_text as string;
+    const newText = args.new_text as string;
+    const replaceAll = (args.replace_all as boolean) || false;
+
+    if (oldText === newText) return "Error: old_text and new_text are identical. No changes needed.";
+
+    const occurrences = content.split(oldText).length - 1;
+
+    if (occurrences === 0) {
+      const trimmed = oldText.trim();
+      const fuzzyCount = content.split(trimmed).length - 1;
+      if (fuzzyCount > 0) {
+        return `Error: Exact match not found, but found ${fuzzyCount} occurrence(s) of the trimmed text. Check whitespace/indentation. Use file_read to see the exact content first.`;
+      }
+      return `Error: old_text not found in '${filePath}'. Use file_read to verify the exact content of the file.`;
+    }
+
+    if (occurrences > 1 && !replaceAll) {
+      return `Error: old_text appears ${occurrences} times in '${filePath}'. Include more surrounding context to make it unique, or set replace_all=true to replace all occurrences.`;
+    }
+
+    let updated: string;
+    if (replaceAll) {
+      updated = content.split(oldText).join(newText);
+    } else {
+      const idx = content.indexOf(oldText);
+      updated = content.substring(0, idx) + newText + content.substring(idx + oldText.length);
+    }
+
+    fs.writeFileSync(resolved, updated, "utf-8");
+    const replacements = replaceAll ? occurrences : 1;
+    log(`Tool file_edit: edited ${filePath} (${replacements} replacement${replacements > 1 ? "s" : ""})`, "tools");
+    return `Successfully edited '${filePath}': replaced ${replacements} occurrence${replacements > 1 ? "s" : ""}. ${newText ? `Replaced ${oldText.length} chars with ${newText.length} chars.` : `Deleted ${oldText.length} chars.`}`;
+  },
+};
+
+const fileSearchTool: NamiTool = {
+  name: "file_search",
+  description: "Search for text patterns across files in the workspace using regex or plain text. Like grep. Use this to find where specific code, functions, variables, or patterns exist before editing. Returns matching lines with file paths and line numbers.",
+  category: "filesystem",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      pattern: {
+        type: "string",
+        description: "Text or regex pattern to search for (e.g., 'function handleSubmit', 'import.*React', 'TODO')",
+      },
+      path: {
+        type: "string",
+        description: "Directory or file to search in. Defaults to '.' (entire workspace).",
+      },
+      file_pattern: {
+        type: "string",
+        description: "File extension filter (e.g., '*.ts', '*.tsx', '*.json'). Supports simple patterns like '*.ext' or 'prefix*.ext'. Defaults to all files.",
+      },
+      max_results: {
+        type: "number",
+        description: "Maximum number of matching lines to return. Defaults to 50.",
+      },
+      case_sensitive: {
+        type: "boolean",
+        description: "Whether search is case-sensitive. Defaults to true.",
+      },
+    },
+    required: ["pattern"],
+  },
+  execute: async (args) => {
+    if (!permissions.fileRead) return "Error: file_read permission is disabled.";
+
+    const pattern = args.pattern as string;
+    const searchPath = (args.path as string) || ".";
+    const filePattern = args.file_pattern as string | undefined;
+    const maxResults = (args.max_results as number) || 50;
+    const caseSensitive = args.case_sensitive !== false;
+
+    if (isPathBlocked(searchPath)) return `Error: Access to '${searchPath}' is restricted.`;
+
+    const resolved = resolvePath(searchPath);
+    if (!fs.existsSync(resolved)) return `Error: Path '${searchPath}' not found.`;
+
+    let regex: RegExp;
+    try {
+      regex = new RegExp(pattern, caseSensitive ? "g" : "gi");
+    } catch (e: any) {
+      return `Error: Invalid regex pattern: ${e.message}`;
+    }
+
+    const results: string[] = [];
+
+    function searchFile(filePath: string) {
+      if (results.length >= maxResults) return;
+      const relative = path.relative(WORKSPACE_ROOT, filePath);
+      if (permissions.blockedPaths.some((b) => relative.startsWith(b + path.sep) || relative === b)) return;
+      if (filePattern) {
+        const name = path.basename(filePath);
+        const parts = filePattern.replace(/\*\*/g, "").split("*").filter(Boolean);
+        if (parts.length === 1) {
+          if (!name.endsWith(parts[0]) && !name.startsWith(parts[0])) return;
+        } else if (parts.length >= 2) {
+          if (!name.startsWith(parts[0]) || !name.endsWith(parts[parts.length - 1])) return;
+        }
+      }
+
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.size > 500000) return;
+        const content = fs.readFileSync(filePath, "utf-8");
+        const lines = content.split("\n");
+        for (let i = 0; i < lines.length && results.length < maxResults; i++) {
+          regex.lastIndex = 0;
+          if (regex.test(lines[i])) {
+            results.push(`${relative}:${i + 1}: ${lines[i].trim()}`);
+          }
+        }
+      } catch {}
+    }
+
+    function walkDir(dir: string, depth: number) {
+      if (depth > 5 || results.length >= maxResults) return;
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (results.length >= maxResults) break;
+          const fullPath = path.join(dir, entry.name);
+          const relative = path.relative(WORKSPACE_ROOT, fullPath);
+          if (permissions.blockedPaths.some((b) => relative.startsWith(b + path.sep) || relative === b)) continue;
+          if (entry.name.startsWith(".") && entry.name !== ".env.example") continue;
+
+          if (entry.isDirectory()) {
+            walkDir(fullPath, depth + 1);
+          } else if (entry.isFile()) {
+            searchFile(fullPath);
+          }
+        }
+      } catch {}
+    }
+
+    const stat = fs.statSync(resolved);
+    if (stat.isFile()) {
+      searchFile(resolved);
+    } else {
+      walkDir(resolved, 0);
+    }
+
+    if (results.length === 0) return `No matches found for '${pattern}' in '${searchPath}'.`;
+    const header = `Found ${results.length}${results.length >= maxResults ? "+" : ""} match(es) for '${pattern}':`;
+    return header + "\n" + results.join("\n");
+  },
+};
+
+let lastRestartTime = 0;
+const RESTART_COOLDOWN_MS = 30000;
+
+const serverRestartTool: NamiTool = {
+  name: "server_restart",
+  description: "Restart the Nami application server to apply code changes. Use this after modifying source files (TypeScript, config) to make changes take effect. The server will restart and reconnect automatically. Has a 30-second cooldown between restarts.",
+  category: "execution",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      reason: {
+        type: "string",
+        description: "Brief description of why the restart is needed (e.g., 'applied UI changes to settings page')",
+      },
+    },
+    required: ["reason"],
+  },
+  execute: async (args) => {
+    if (!permissions.shellExec) return "Error: shell_exec permission is disabled (server_restart requires it).";
+
+    const now = Date.now();
+    const elapsed = now - lastRestartTime;
+    if (elapsed < RESTART_COOLDOWN_MS) {
+      const remaining = Math.ceil((RESTART_COOLDOWN_MS - elapsed) / 1000);
+      return `Error: Server restart on cooldown. Wait ${remaining} more seconds before restarting again.`;
+    }
+
+    const reason = (args.reason as string) || "manual restart";
+    lastRestartTime = now;
+    log(`Tool server_restart: restarting server - ${reason}`, "tools");
+
+    setTimeout(() => {
+      log("Server restart triggered by agent tool", "tools");
+      process.exit(0);
+    }, 1000);
+
+    return `Server restart initiated. Reason: ${reason}. The server will restart in ~1 second and reconnect automatically. Wait a few seconds before making further requests.`;
+  },
+};
+
 const fileListTool: NamiTool = {
   name: "file_list",
   description: "List files and directories in a workspace directory. Returns file names, sizes, and types. Use this to explore the project structure.",
@@ -1079,7 +1312,7 @@ const xGetStatusTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileListTool, shellExecTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool];
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool];
 
 export function getTools(): NamiTool[] {
   return allTools;

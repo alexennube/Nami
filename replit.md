@@ -28,7 +28,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `server/engine.ts` - Core orchestration engine (EventBus, heartbeat loop, agent/swarm management, chat with Nami)
 - `server/openrouter.ts` - OpenRouter.ai BYOK client
 - `server/engine-mind.ts` - Pi framework Engine Mind wrapper (self-healing, spawn validation, auto-compaction, diagnostics)
-- `server/tools.ts` - Tool registry (file_read, file_write, file_list, shell_exec, self_inspect, web_browse, web_search, google_workspace, ennube_mcp, create_swarm, manage_swarm) with permissions
+- `server/tools.ts` - Tool registry (file_read, file_write, file_edit, file_search, file_list, shell_exec, server_restart, self_inspect, web_browse, web_search, google_workspace, ennube_mcp, create_swarm, manage_swarm) with permissions
 - `server/routes.ts` - Express API routes + WebSocket setup
 - `server/storage.ts` - In-memory storage layer with file-based config persistence
 - `client/src/App.tsx` - Main app with sidebar layout, chat as default view
@@ -66,6 +66,7 @@ Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. 
 - `POST /api/x/delete` - Delete tweet by ID
 
 ## Recent Changes
+- 2026-02-24: Self-editing capability: file_edit tool (targeted find-and-replace within files, safer than full file_write), file_search tool (grep-like search across workspace), server_restart tool (restart server after code changes). System prompt updated with self-editing workflow instructions. Agents and swarms can now surgically modify their own codebase.
 - 2026-02-24: X (Twitter) integration: server/x-api.ts OAuth 1.0a engine (post, delete tweets), 3 agent tools (x_post_tweet, x_delete_tweet, x_get_status) in "social" category, API routes (/api/x/status, test, post, delete), Settings UI card with credential status, test tweet, quick post. No external Twitter libs - built from Node crypto/https. Requires X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET secrets.
 - 2026-02-20: Documentation system: DocPage schema (slug, title, content, lastEditedBy), docs_read/docs_write agent tools, Docs page UI with markdown rendering, CRUD API routes (/api/docs), disk persistence, sidebar nav entry. README.md added for repo sharing.
 - 2026-02-20: Repo cleanup for shareability: removed 19 unused deps (drizzle, passport, pg, etc.), dead files (drizzle.config.ts, dashboard.tsx), cleaned build script, updated .gitignore, added .env.example, updated package.json metadata.
