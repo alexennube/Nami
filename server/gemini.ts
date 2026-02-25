@@ -11,8 +11,6 @@ const TOKEN_FILE = path.join(process.cwd(), ".nami-data", "google-token.json");
 
 const GEMINI_SCOPES = [
   "https://www.googleapis.com/auth/generative-language",
-  "https://www.googleapis.com/auth/generative-language.retriever",
-  "https://www.googleapis.com/auth/cloud-platform",
 ].join(" ");
 
 let cachedAccessToken: string | null = null;
