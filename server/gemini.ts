@@ -169,6 +169,16 @@ let geminiModelsCache: GeminiModel[] = [];
 let geminiModelsCacheTime = 0;
 const GEMINI_MODELS_TTL = 30 * 60 * 1000;
 
+const FALLBACK_GEMINI_MODELS: GeminiModel[] = [
+  { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", context_length: 1048576, pricing: { prompt: "0", completion: "0" } },
+  { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash", context_length: 1048576, pricing: { prompt: "0", completion: "0" } },
+  { id: "gemini-2.0-flash", name: "Gemini 2.0 Flash", context_length: 1048576, pricing: { prompt: "0", completion: "0" } },
+  { id: "gemini-2.0-flash-lite", name: "Gemini 2.0 Flash Lite", context_length: 1048576, pricing: { prompt: "0", completion: "0" } },
+  { id: "gemini-1.5-pro", name: "Gemini 1.5 Pro", context_length: 2097152, pricing: { prompt: "0", completion: "0" } },
+  { id: "gemini-1.5-flash", name: "Gemini 1.5 Flash", context_length: 1048576, pricing: { prompt: "0", completion: "0" } },
+  { id: "gemini-1.5-flash-8b", name: "Gemini 1.5 Flash 8B", context_length: 1048576, pricing: { prompt: "0", completion: "0" } },
+];
+
 export async function fetchGeminiModels(): Promise<GeminiModel[]> {
   if (geminiModelsCache.length > 0 && Date.now() - geminiModelsCacheTime < GEMINI_MODELS_TTL) {
     return geminiModelsCache;
@@ -181,7 +191,12 @@ export async function fetchGeminiModels(): Promise<GeminiModel[]> {
     });
 
     if (!res.ok) {
-      throw new Error(`Gemini models API returned ${res.status}`);
+      const errBody = await res.text().catch(() => "");
+      log(`Gemini models API returned ${res.status}: ${errBody.slice(0, 200)}`, "gemini");
+      log("Using fallback Gemini model list. To enable dynamic listing, enable the 'Generative Language API' in Google Cloud Console.", "gemini");
+      geminiModelsCache = FALLBACK_GEMINI_MODELS;
+      geminiModelsCacheTime = Date.now();
+      return FALLBACK_GEMINI_MODELS;
     }
 
     const data = await res.json() as { models: any[] };
@@ -197,12 +212,14 @@ export async function fetchGeminiModels(): Promise<GeminiModel[]> {
     models.sort((a, b) => a.name.localeCompare(b.name));
     geminiModelsCache = models;
     geminiModelsCacheTime = Date.now();
-    log(`Fetched ${models.length} Gemini models`, "gemini");
+    log(`Fetched ${models.length} Gemini models from API`, "gemini");
     return models;
   } catch (err: any) {
-    log(`Failed to fetch Gemini models: ${err.message}`, "gemini");
+    log(`Failed to fetch Gemini models: ${err.message}. Using fallback list.`, "gemini");
     if (geminiModelsCache.length > 0) return geminiModelsCache;
-    throw err;
+    geminiModelsCache = FALLBACK_GEMINI_MODELS;
+    geminiModelsCacheTime = Date.now();
+    return FALLBACK_GEMINI_MODELS;
   }
 }
 
