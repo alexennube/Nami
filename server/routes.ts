@@ -6,7 +6,7 @@ import path from "path";
 import { storage } from "./storage";
 import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
-import { fetchGeminiModels, testGeminiConnection } from "./gemini";
+import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCodeForTokens, saveRefreshToken, hasValidGeminiCredentials } from "./gemini";
 import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
@@ -495,6 +495,51 @@ export async function registerRoutes(
       }
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  app.get("/api/auth/google/status", async (_req, res) => {
+    const creds = hasValidGeminiCredentials();
+    res.json({ authenticated: creds.valid, missing: creds.missing });
+  });
+
+  app.get("/api/auth/google", async (req, res) => {
+    try {
+      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host || req.hostname;
+      const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+      const authUrl = getGoogleAuthUrl(redirectUri);
+      res.json({ authUrl, redirectUri });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/auth/google/callback", async (req, res) => {
+    const { code, error: authError } = req.query;
+
+    if (authError) {
+      log(`Google OAuth error: ${authError}`, "gemini");
+      return res.redirect("/settings?google_auth=error&message=" + encodeURIComponent(String(authError)));
+    }
+
+    if (!code || typeof code !== "string") {
+      return res.redirect("/settings?google_auth=error&message=" + encodeURIComponent("No authorization code received"));
+    }
+
+    try {
+      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host || req.hostname;
+      const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+
+      const tokens = await exchangeCodeForTokens(code, redirectUri);
+      saveRefreshToken(tokens.refresh_token);
+      log("Google OAuth completed — refresh token saved", "gemini");
+
+      res.redirect("/settings?google_auth=success");
+    } catch (err: any) {
+      log(`Google OAuth callback error: ${err.message}`, "gemini");
+      res.redirect("/settings?google_auth=error&message=" + encodeURIComponent(err.message));
     }
   });
 

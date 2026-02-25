@@ -172,6 +172,9 @@ export default function Settings() {
     queryKey: ["/api/models/gemini"],
     staleTime: 5 * 60 * 1000,
   });
+  const { data: googleAuthStatus } = useQuery<{ authenticated: boolean; missing: string[] }>({
+    queryKey: ["/api/auth/google/status"],
+  });
   const { toast } = useToast();
 
   const [apiKey, setApiKey] = useState("");
@@ -185,6 +188,20 @@ export default function Settings() {
   const [maxConcurrentAgents, setMaxConcurrentAgents] = useState(10);
   const [maxTokens, setMaxTokens] = useState(4096);
   const [temperature, setTemperature] = useState(0.7);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authResult = params.get("google_auth");
+    if (authResult === "success") {
+      toast({ title: "Google authenticated", description: "OAuth flow completed. You can now use Gemini models." });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/google/status"] });
+      window.history.replaceState({}, "", window.location.pathname);
+    } else if (authResult === "error") {
+      const message = params.get("message") || "Authentication failed";
+      toast({ title: "Google auth failed", description: message, variant: "destructive" });
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
 
   useEffect(() => {
     if (config) {
@@ -259,6 +276,21 @@ export default function Settings() {
     },
   });
 
+  const googleAuthMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/auth/google");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      if (data.authUrl) {
+        window.open(data.authUrl, "_blank");
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to start auth", description: err.message, variant: "destructive" });
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="flex flex-col gap-4 md:gap-6 p-3 md:p-6 max-w-[800px]">
@@ -312,29 +344,72 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="border-t pt-4 flex flex-col gap-2">
+          <div className="border-t pt-4 flex flex-col gap-3">
             <Label className="text-xs flex items-center gap-1.5">
               <Sparkles className="w-3 h-3" />
               Google Gemini (OAuth2)
             </Label>
-            <div className="flex gap-2">
+
+            <div className="flex items-center gap-2">
+              {googleAuthStatus?.authenticated ? (
+                <div className="flex items-center gap-2 text-xs text-emerald-400">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>Google authenticated</span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-xs text-amber-400">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Not authenticated{googleAuthStatus?.missing?.length ? `: ${googleAuthStatus.missing.join(", ")}` : ""}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
-                onClick={() => testGeminiMutation.mutate()}
-                disabled={testGeminiMutation.isPending}
+                size="sm"
+                onClick={() => googleAuthMutation.mutate()}
+                disabled={googleAuthMutation.isPending}
                 className="text-xs"
-                data-testid="button-test-gemini"
+                data-testid="button-google-auth"
               >
-                {testGeminiMutation.isPending ? (
-                  <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Testing...</>
+                {googleAuthMutation.isPending ? (
+                  <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Opening...</>
                 ) : (
-                  "Test Gemini Connection"
+                  <><ExternalLink className="w-3 h-3 mr-1.5" /> Authenticate with Google</>
                 )}
               </Button>
+              {googleAuthStatus?.authenticated && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => testGeminiMutation.mutate()}
+                  disabled={testGeminiMutation.isPending}
+                  className="text-xs"
+                  data-testid="button-test-gemini"
+                >
+                  {testGeminiMutation.isPending ? (
+                    <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Testing...</>
+                  ) : (
+                    "Test Gemini"
+                  )}
+                </Button>
+              )}
             </div>
-            <p className="text-[10px] text-muted-foreground">
-              Uses GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN environment secrets for OAuth2 access.
-            </p>
+
+            <div className="text-[10px] text-muted-foreground space-y-1">
+              <p>Uses Google OAuth2 with your Client ID and Client Secret. Click "Authenticate with Google" to sign in and grant Gemini API access.</p>
+              <p>
+                Add this callback URL to your{" "}
+                <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-primary underline">
+                  Google Cloud Console
+                </a>{" "}
+                authorized redirect URIs:
+              </p>
+              <code className="block bg-muted/50 px-2 py-1 rounded text-[10px] font-mono break-all">
+                {window.location.origin}/api/auth/google/callback
+              </code>
+            </div>
           </div>
         </CardContent>
       </Card>
