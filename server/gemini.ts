@@ -9,9 +9,7 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_FILE = path.join(process.cwd(), ".nami-data", "google-token.json");
 
-const GEMINI_SCOPES = [
-  "https://www.googleapis.com/auth/generative-language",
-].join(" ");
+const GEMINI_SCOPES = "https://www.googleapis.com/auth/cloud-platform";
 
 let cachedAccessToken: string | null = null;
 let tokenExpiresAt = 0;
