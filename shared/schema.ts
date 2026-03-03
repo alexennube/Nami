@@ -130,8 +130,17 @@ export const swarmMessageSchema = z.object({
 });
 export type SwarmMessage = z.infer<typeof swarmMessageSchema>;
 
+export const chatSessionSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ChatSession = z.infer<typeof chatSessionSchema>;
+
 export const chatMessageSchema = z.object({
   id: z.string(),
+  sessionId: z.string().default("default"),
   role: z.enum(["user", "assistant"]),
   content: z.string(),
   agentId: z.string().nullable(),

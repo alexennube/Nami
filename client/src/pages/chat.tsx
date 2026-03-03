@@ -4,22 +4,45 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Send, ChevronDown, ChevronUp, Heart, PanelRightClose, Clock, Zap, Moon, AlertTriangle } from "lucide-react";
-import type { ChatMessage, EngineStatus, HeartbeatLog } from "@shared/schema";
+import { Send, ChevronDown, ChevronUp, Heart, PanelRightClose, Clock, Zap, Moon, AlertTriangle, Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Check } from "lucide-react";
+import type { ChatMessage, ChatSession, EngineStatus, HeartbeatLog } from "@shared/schema";
 
 export default function Chat() {
   const [input, setInput] = useState("");
   const isMobile = useIsMobile();
   const [timelineOpen, setTimelineOpen] = useState(true);
+  const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
+  const [newSessionName, setNewSessionName] = useState("");
+  const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
+  const { data: sessions = [] } = useQuery<ChatSession[]>({
+    queryKey: ["/api/chat/sessions"],
+  });
+
+  const { data: activeSessionData } = useQuery<{ sessionId: string }>({
+    queryKey: ["/api/chat/sessions/active"],
+  });
+
+  const activeSessionId = activeSessionData?.sessionId || "default";
+  const activeSession = sessions.find((s) => s.id === activeSessionId);
+
   const { data: messages = [], isLoading } = useQuery<ChatMessage[]>({
-    queryKey: ["/api/chat"],
+    queryKey: ["/api/chat", activeSessionId],
+    queryFn: async () => {
+      const res = await fetch(`/api/chat?sessionId=${activeSessionId}`);
+      if (!res.ok) throw new Error("Failed to fetch messages");
+      return res.json();
+    },
     refetchInterval: 3000,
   });
 
@@ -34,14 +57,15 @@ export default function Chat() {
 
   const sendMutation = useMutation({
     mutationFn: async (message: string) => {
-      const res = await apiRequest("POST", "/api/chat", { message });
+      const res = await apiRequest("POST", "/api/chat", { message, sessionId: activeSessionId });
       return res.json();
     },
     onMutate: async (message: string) => {
-      await queryClient.cancelQueries({ queryKey: ["/api/chat"] });
-      const previous = queryClient.getQueryData<ChatMessage[]>(["/api/chat"]);
+      await queryClient.cancelQueries({ queryKey: ["/api/chat", activeSessionId] });
+      const previous = queryClient.getQueryData<ChatMessage[]>(["/api/chat", activeSessionId]);
       const optimisticMsg: ChatMessage = {
         id: `optimistic-${Date.now()}`,
+        sessionId: activeSessionId,
         role: "user",
         content: message,
         agentId: null,
@@ -50,19 +74,71 @@ export default function Chat() {
         autonomous: false,
         timestamp: new Date().toISOString(),
       };
-      queryClient.setQueryData<ChatMessage[]>(["/api/chat"], (old = []) => [...old, optimisticMsg]);
+      queryClient.setQueryData<ChatMessage[]>(["/api/chat", activeSessionId], (old = []) => [...old, optimisticMsg]);
       return { previous };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/chat"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chat", activeSessionId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/sessions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/thoughts"] });
     },
     onError: (err: Error, _msg, context) => {
       if (context?.previous) {
-        queryClient.setQueryData(["/api/chat"], context.previous);
+        queryClient.setQueryData(["/api/chat", activeSessionId], context.previous);
       }
       toast({ title: "Failed to send message", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const createSessionMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const res = await apiRequest("POST", "/api/chat/sessions", { name });
+      return res.json();
+    },
+    onSuccess: (session: ChatSession) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/sessions/active"] });
+      setNewSessionDialogOpen(false);
+      setNewSessionName("");
+      toast({ title: "Chat created", description: `Switched to "${session.name}"` });
+    },
+  });
+
+  const activateSessionMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/chat/sessions/${id}/activate`);
+      return res.json();
+    },
+    onSuccess: (_data, newId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/sessions/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chat", newId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chat", activeSessionId] });
+    },
+  });
+
+  const renameSessionMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      const res = await apiRequest("PATCH", `/api/chat/sessions/${id}`, { name });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/sessions"] });
+      setRenameSessionId(null);
+      setRenameValue("");
+    },
+  });
+
+  const deleteSessionMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/chat/sessions/${id}`);
+    },
+    onSuccess: (_data, deletedId) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chat/sessions/active"] });
+      queryClient.removeQueries({ queryKey: ["/api/chat", deletedId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/chat", "default"] });
+      toast({ title: "Chat deleted" });
     },
   });
 
@@ -98,6 +174,71 @@ export default function Chat() {
   return (
     <div className="flex h-full">
       <div className="flex flex-col flex-1 min-w-0">
+        <div className="flex items-center gap-2 px-3 md:px-6 py-2 border-b bg-background shrink-0">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm" className="gap-1.5 text-xs font-medium max-w-[200px] md:max-w-[300px]" data-testid="button-session-picker">
+                <MessageSquare className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">{activeSession?.name || "Main Chat"}</span>
+                <ChevronDown className="w-3 h-3 shrink-0 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              {sessions.map((session) => (
+                <DropdownMenuItem
+                  key={session.id}
+                  className="flex items-center justify-between gap-2"
+                  onClick={() => {
+                    if (session.id !== activeSessionId) {
+                      activateSessionMutation.mutate(session.id);
+                    }
+                  }}
+                  data-testid={`menu-session-${session.id}`}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {session.id === activeSessionId && <Check className="w-3 h-3 text-primary shrink-0" />}
+                    <span className="truncate text-xs">{session.name}</span>
+                  </div>
+                  {session.id !== "default" && (
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0">
+                          <MoreHorizontal className="w-3 h-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          setRenameSessionId(session.id);
+                          setRenameValue(session.name);
+                        }}>
+                          <Pencil className="w-3 h-3 mr-2" /> Rename
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteSessionMutation.mutate(session.id);
+                          }}
+                        >
+                          <Trash2 className="w-3 h-3 mr-2" /> Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  )}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setNewSessionDialogOpen(true)} data-testid="button-new-session">
+                <Plus className="w-3 h-3 mr-2" /> New Chat
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <span className="text-[10px] text-muted-foreground font-mono hidden md:inline">
+            {messages.length} messages
+          </span>
+        </div>
+
         <div className="flex-1 overflow-auto px-3 md:px-6 py-4" ref={scrollRef}>
           {isLoading ? (
             <div className="space-y-6 py-4 max-w-3xl mx-auto">
@@ -252,6 +393,70 @@ export default function Chat() {
           </div>
         )
       )}
+
+      <Dialog open={newSessionDialogOpen} onOpenChange={setNewSessionDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>New Chat</DialogTitle>
+            <DialogDescription>Create a new conversation with Nami</DialogDescription>
+          </DialogHeader>
+          <Input
+            placeholder="Chat name..."
+            value={newSessionName}
+            onChange={(e) => setNewSessionName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newSessionName.trim()) {
+                createSessionMutation.mutate(newSessionName.trim());
+              }
+            }}
+            data-testid="input-new-session-name"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNewSessionDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={() => createSessionMutation.mutate(newSessionName.trim())}
+              disabled={!newSessionName.trim() || createSessionMutation.isPending}
+              data-testid="button-create-session"
+            >
+              {createSessionMutation.isPending ? "Creating..." : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!renameSessionId} onOpenChange={(open) => { if (!open) setRenameSessionId(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename Chat</DialogTitle>
+            <DialogDescription>Give this conversation a new name</DialogDescription>
+          </DialogHeader>
+          <Input
+            placeholder="Chat name..."
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && renameValue.trim() && renameSessionId) {
+                renameSessionMutation.mutate({ id: renameSessionId, name: renameValue.trim() });
+              }
+            }}
+            data-testid="input-rename-session"
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameSessionId(null)}>Cancel</Button>
+            <Button
+              onClick={() => {
+                if (renameSessionId && renameValue.trim()) {
+                  renameSessionMutation.mutate({ id: renameSessionId, name: renameValue.trim() });
+                }
+              }}
+              disabled={!renameValue.trim() || renameSessionMutation.isPending}
+              data-testid="button-rename-session"
+            >
+              {renameSessionMutation.isPending ? "Renaming..." : "Rename"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

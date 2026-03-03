@@ -205,16 +205,69 @@ export async function registerRoutes(
     res.json({ success: true });
   });
 
-  app.get("/api/chat", async (_req, res) => {
-    const messages = await storage.getChatHistory();
+  app.get("/api/chat/sessions", async (_req, res) => {
+    const sessions = await storage.getChatSessions();
+    res.json(sessions);
+  });
+
+  app.get("/api/chat/sessions/active", async (_req, res) => {
+    res.json({ sessionId: storage.getActiveChatSessionId() });
+  });
+
+  app.post("/api/chat/sessions", async (req, res) => {
+    const { name } = req.body;
+    if (!name || typeof name !== "string") {
+      return res.status(400).json({ message: "Session name required" });
+    }
+    const session = await storage.createChatSession(name.trim());
+    storage.setActiveChatSessionId(session.id);
+    res.json(session);
+  });
+
+  app.patch("/api/chat/sessions/:id", async (req, res) => {
+    const { name } = req.body;
+    if (!name || typeof name !== "string") {
+      return res.status(400).json({ message: "Name required" });
+    }
+    const session = await storage.renameChatSession(req.params.id, name.trim());
+    if (!session) return res.status(404).json({ message: "Session not found" });
+    res.json(session);
+  });
+
+  app.post("/api/chat/sessions/:id/activate", async (req, res) => {
+    const session = await storage.getChatSession(req.params.id);
+    if (!session) return res.status(404).json({ message: "Session not found" });
+    storage.setActiveChatSessionId(session.id);
+    res.json({ sessionId: session.id });
+  });
+
+  app.delete("/api/chat/sessions/:id", async (req, res) => {
+    if (req.params.id === "default") {
+      return res.status(400).json({ message: "Cannot delete the default session" });
+    }
+    const deleted = await storage.deleteChatSession(req.params.id);
+    if (!deleted) return res.status(404).json({ message: "Session not found" });
+    res.json({ success: true });
+  });
+
+  app.get("/api/chat", async (req, res) => {
+    const sessionId = (req.query.sessionId as string) || undefined;
+    const messages = await storage.getChatHistory(sessionId);
     res.json(messages);
   });
 
   app.post("/api/chat", async (req, res) => {
     try {
-      const { message } = req.body;
+      const { message, sessionId } = req.body;
       if (!message || typeof message !== "string") {
         return res.status(400).json({ message: "Message required" });
+      }
+      if (sessionId) {
+        const session = await storage.getChatSession(sessionId);
+        if (!session) {
+          return res.status(404).json({ message: "Chat session not found" });
+        }
+        storage.setActiveChatSessionId(sessionId);
       }
       const result = await chatWithNami(message);
       res.json(result);
@@ -223,8 +276,9 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/chat", async (_req, res) => {
-    await storage.clearChatHistory();
+  app.delete("/api/chat", async (req, res) => {
+    const sessionId = (req.query.sessionId as string) || undefined;
+    await storage.clearChatHistory(sessionId);
     res.json({ success: true });
   });
 

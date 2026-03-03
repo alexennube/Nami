@@ -26,7 +26,7 @@ Nami employs a hierarchical agent structure: `Nami` (main orchestrator), `Spawn`
 - **Tools:** A comprehensive tool registry (`file_read`, `file_write`, `file_edit`, `file_search`, `shell_exec`, `web_browse`, `web_search`, `google_workspace`, `ennube_mcp`, `create_swarm`, `manage_swarm`, `server_restart`, `self_inspect`, `docs_read/write`, `x_post_tweet`, `x_delete_tweet`) with a permission layer and function calling integration for LLMs.
 
 **Key Features:**
-- **Chat Module:** Central conversational interface with the Nami orchestrator.
+- **Chat Module:** Central conversational interface with the Nami orchestrator. Supports multiple chat sessions with create/rename/delete/switch. Chat history persists to disk per session (`.nami-data/chat-history.json`, `.nami-data/chat-sessions.json`). Existing messages are auto-migrated to a "default" session for backward compatibility.
 - **Heartbeat System:** Autonomous loop that pings Nami with instructions, reporting `< SLEEP >` when idle.
 - **Engine Mind (Pi Framework):** Provides internal reasoning (Thoughts), stored context (Memory), self-healing tool execution, spawn validation, and chat history auto-compaction.
 - **Engine State Control:** RUNNING, PAUSED, STOPPED states with corresponding controls.

@@ -1,4 +1,4 @@
-import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, Thought, Memory, Skill, HeartbeatConfig, HeartbeatLog, EngineState, SwarmMessage, UsageRecord, InsertUsageRecord, DocPage, InsertDocPage } from "@shared/schema";
+import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, SystemStats, AgentMessage, ChatMessage, ChatSession, Thought, Memory, Skill, HeartbeatConfig, HeartbeatLog, EngineState, SwarmMessage, UsageRecord, InsertUsageRecord, DocPage, InsertDocPage } from "@shared/schema";
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
@@ -9,6 +9,7 @@ const CONFIG_FILE = path.join(PERSIST_DIR, "config.json");
 const HEARTBEAT_CONFIG_FILE = path.join(PERSIST_DIR, "heartbeat.json");
 const ENGINE_STATE_FILE = path.join(PERSIST_DIR, "engine-state.json");
 const CHAT_HISTORY_FILE = path.join(PERSIST_DIR, "chat-history.json");
+const CHAT_SESSIONS_FILE = path.join(PERSIST_DIR, "chat-sessions.json");
 const THOUGHTS_FILE = path.join(PERSIST_DIR, "thoughts.json");
 const MEMORIES_FILE = path.join(PERSIST_DIR, "memories.json");
 const SWARM_MESSAGES_FILE = path.join(PERSIST_DIR, "swarm-messages.json");
@@ -78,9 +79,17 @@ export interface IStorage {
   getMessages(agentId?: string, swarmId?: string): Promise<AgentMessage[]>;
   addMessage(message: Omit<AgentMessage, "id" | "timestamp">): Promise<AgentMessage>;
 
-  getChatHistory(): Promise<ChatMessage[]>;
+  getChatSessions(): Promise<ChatSession[]>;
+  getChatSession(id: string): Promise<ChatSession | undefined>;
+  createChatSession(name: string): Promise<ChatSession>;
+  renameChatSession(id: string, name: string): Promise<ChatSession | undefined>;
+  deleteChatSession(id: string): Promise<boolean>;
+  getActiveChatSessionId(): string;
+  setActiveChatSessionId(id: string): void;
+
+  getChatHistory(sessionId?: string): Promise<ChatMessage[]>;
   addChatMessage(message: Omit<ChatMessage, "id" | "timestamp">): Promise<ChatMessage>;
-  clearChatHistory(): Promise<void>;
+  clearChatHistory(sessionId?: string): Promise<void>;
 
   getThoughts(): Promise<Thought[]>;
   addThought(thought: Omit<Thought, "id" | "timestamp">): Promise<Thought>;
@@ -126,6 +135,8 @@ export class MemStorage implements IStorage {
   private events: NamiEvent[] = [];
   private messages: AgentMessage[] = [];
   private chatHistory: ChatMessage[] = [];
+  private chatSessions: Map<string, ChatSession> = new Map();
+  private activeChatSessionId: string = "default";
   private thoughts: Thought[] = [];
   private memories: Map<string, Memory> = new Map();
   private skills: Map<string, Skill> = new Map();
@@ -173,6 +184,27 @@ export class MemStorage implements IStorage {
     this.engineState = savedEngine.state;
 
     this.chatHistory = loadJson<ChatMessage[]>(CHAT_HISTORY_FILE, []);
+    let chatMigrated = false;
+    for (const msg of this.chatHistory) {
+      if (!msg.sessionId) {
+        (msg as any).sessionId = "default";
+        chatMigrated = true;
+      }
+    }
+    if (chatMigrated) {
+      this.persistChat();
+    }
+
+    const savedSessions = loadJson<ChatSession[]>(CHAT_SESSIONS_FILE, []);
+    for (const session of savedSessions) {
+      this.chatSessions.set(session.id, session);
+    }
+    if (!this.chatSessions.has("default")) {
+      const now = new Date().toISOString();
+      this.chatSessions.set("default", { id: "default", name: "Main Chat", createdAt: now, updatedAt: now });
+      this.persistChatSessions();
+    }
+
     this.thoughts = loadJson<Thought[]>(THOUGHTS_FILE, []);
     this.swarmMessages = loadJson<SwarmMessage[]>(SWARM_MESSAGES_FILE, []);
 
@@ -421,38 +453,96 @@ export class MemStorage implements IStorage {
     saveJson(MESSAGES_FILE, this.messages);
   }
 
-  async getChatHistory(): Promise<ChatMessage[]> {
-    return [...this.chatHistory];
+  async getChatSessions(): Promise<ChatSession[]> {
+    return Array.from(this.chatSessions.values()).sort((a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+  }
+
+  async getChatSession(id: string): Promise<ChatSession | undefined> {
+    return this.chatSessions.get(id);
+  }
+
+  async createChatSession(name: string): Promise<ChatSession> {
+    const now = new Date().toISOString();
+    const session: ChatSession = { id: randomUUID(), name, createdAt: now, updatedAt: now };
+    this.chatSessions.set(session.id, session);
+    this.persistChatSessions();
+    return session;
+  }
+
+  async renameChatSession(id: string, name: string): Promise<ChatSession | undefined> {
+    const session = this.chatSessions.get(id);
+    if (!session) return undefined;
+    session.name = name;
+    session.updatedAt = new Date().toISOString();
+    this.persistChatSessions();
+    return session;
+  }
+
+  async deleteChatSession(id: string): Promise<boolean> {
+    if (id === "default") return false;
+    const deleted = this.chatSessions.delete(id);
+    if (deleted) {
+      this.chatHistory = this.chatHistory.filter((m) => m.sessionId !== id);
+      this.persistChat();
+      this.persistChatSessions();
+      if (this.activeChatSessionId === id) {
+        this.activeChatSessionId = "default";
+      }
+    }
+    return deleted;
+  }
+
+  getActiveChatSessionId(): string {
+    return this.activeChatSessionId;
+  }
+
+  setActiveChatSessionId(id: string): void {
+    this.activeChatSessionId = id;
+  }
+
+  async getChatHistory(sessionId?: string): Promise<ChatMessage[]> {
+    const sid = sessionId || this.activeChatSessionId;
+    return this.chatHistory.filter((m) => m.sessionId === sid);
   }
 
   async addChatMessage(data: Omit<ChatMessage, "id" | "timestamp">): Promise<ChatMessage> {
-    const msg: ChatMessage = { ...data, id: randomUUID(), timestamp: new Date().toISOString() };
+    const sessionId = data.sessionId || this.activeChatSessionId;
+    if (!this.chatSessions.has(sessionId)) {
+      const now = new Date().toISOString();
+      this.chatSessions.set(sessionId, { id: sessionId, name: sessionId === "default" ? "Main Chat" : "Chat", createdAt: now, updatedAt: now });
+      this.persistChatSessions();
+    }
+    const msg: ChatMessage = { ...data, sessionId, id: randomUUID(), timestamp: new Date().toISOString() };
     this.chatHistory.push(msg);
     const MAX_CHAT = 500;
-    if (this.chatHistory.length > MAX_CHAT) {
-      const keep = this.chatHistory.slice(-MAX_CHAT);
-      const keepIds = new Set(keep.map((m) => m.id));
-      const droppedUserMsgs = this.chatHistory.slice(0, -MAX_CHAT).filter((m) => m.role === "user" && !keepIds.has(m.id));
-      const rescueCount = Math.min(droppedUserMsgs.length, 50);
-      if (rescueCount > 0) {
-        const rescued = droppedUserMsgs.slice(-rescueCount);
-        const trimmed = keep.slice(rescueCount);
-        this.chatHistory = [...rescued, ...trimmed];
-      } else {
-        this.chatHistory = keep;
-      }
+    const sessionMsgs = this.chatHistory.filter((m) => m.sessionId === sessionId);
+    if (sessionMsgs.length > MAX_CHAT) {
+      const keepIds = new Set(sessionMsgs.slice(-MAX_CHAT).map((m) => m.id));
+      this.chatHistory = this.chatHistory.filter((m) => m.sessionId !== sessionId || keepIds.has(m.id));
+    }
+    const session = this.chatSessions.get(sessionId);
+    if (session) {
+      session.updatedAt = new Date().toISOString();
+      this.persistChatSessions();
     }
     this.persistChat();
     return msg;
   }
 
-  async clearChatHistory(): Promise<void> {
-    this.chatHistory = [];
+  async clearChatHistory(sessionId?: string): Promise<void> {
+    const sid = sessionId || this.activeChatSessionId;
+    this.chatHistory = this.chatHistory.filter((m) => m.sessionId !== sid);
     this.persistChat();
   }
 
   private persistChat() {
     saveJson(CHAT_HISTORY_FILE, this.chatHistory);
+  }
+
+  private persistChatSessions() {
+    saveJson(CHAT_SESSIONS_FILE, Array.from(this.chatSessions.values()));
   }
 
   async getThoughts(): Promise<Thought[]> {
