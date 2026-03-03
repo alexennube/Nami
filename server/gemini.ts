@@ -9,7 +9,27 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_FILE = path.join(process.cwd(), ".nami-data", "google-token.json");
 
-const GEMINI_SCOPES = "https://www.googleapis.com/auth/cloud-platform";
+const GEMINI_SCOPES = [
+  "https://www.googleapis.com/auth/cloud-platform",
+  "https://www.googleapis.com/auth/gmail.modify",
+  "https://www.googleapis.com/auth/gmail.settings.basic",
+  "https://www.googleapis.com/auth/gmail.settings.sharing",
+  "https://www.googleapis.com/auth/calendar",
+  "https://www.googleapis.com/auth/drive",
+  "https://www.googleapis.com/auth/spreadsheets",
+  "https://www.googleapis.com/auth/contacts",
+  "https://www.googleapis.com/auth/forms.body",
+  "https://www.googleapis.com/auth/forms.responses.readonly",
+  "https://www.googleapis.com/auth/script.projects",
+  "https://www.googleapis.com/auth/script.deployments",
+  "https://www.googleapis.com/auth/script.processes",
+  "https://www.googleapis.com/auth/chat.spaces",
+  "https://www.googleapis.com/auth/chat.messages",
+  "https://www.googleapis.com/auth/chat.memberships",
+  "https://www.googleapis.com/auth/tasks",
+  "profile",
+  "email",
+].join(" ");
 
 let cachedAccessToken: string | null = null;
 let tokenExpiresAt = 0;
@@ -220,6 +240,131 @@ export async function fetchGeminiModels(): Promise<GeminiModel[]> {
     geminiModelsCache = FALLBACK_GEMINI_MODELS;
     geminiModelsCacheTime = Date.now();
     return FALLBACK_GEMINI_MODELS;
+  }
+}
+
+export async function getGoogleUserEmail(accessToken: string): Promise<string | null> {
+  try {
+    const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { email?: string };
+    return data.email || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function syncGogCLI(refreshToken: string, accessToken: string): Promise<{ success: boolean; email?: string; error?: string }> {
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
+  const execFileAsync = promisify(execFile);
+  const GOG_CLI_PATH = path.join(process.cwd(), ".local", "bin", "gog");
+  const GOG_KEYRING_PASSWORD = "nami-keyring";
+  const env = { ...process.env, GOG_KEYRING_PASSWORD };
+
+  try {
+    const email = await getGoogleUserEmail(accessToken);
+    if (!email) {
+      return { success: false, error: "Could not determine Google account email" };
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) {
+      return { success: false, error: "GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET not set" };
+    }
+
+    const gogConfigDir = path.join(process.cwd(), ".config", "gogcli");
+    if (!fs.existsSync(gogConfigDir)) fs.mkdirSync(gogConfigDir, { recursive: true });
+
+    const configFile = path.join(gogConfigDir, "config.json");
+    if (!fs.existsSync(configFile)) {
+      fs.writeFileSync(configFile, JSON.stringify({ keyring_backend: "file" }));
+    } else {
+      try {
+        const existing = JSON.parse(fs.readFileSync(configFile, "utf-8"));
+        existing.keyring_backend = "file";
+        fs.writeFileSync(configFile, JSON.stringify(existing));
+      } catch {
+        fs.writeFileSync(configFile, JSON.stringify({ keyring_backend: "file" }));
+      }
+    }
+
+    const credsFile = path.join(gogConfigDir, "credentials.json");
+    fs.writeFileSync(credsFile, JSON.stringify({ client_id: clientId, client_secret: clientSecret }));
+    log(`Updated gogCLI credentials.json with Gemini OAuth client`, "gemini");
+
+    const tokenFile = path.join(process.cwd(), ".nami-data", "gog-token-import.json");
+    fs.writeFileSync(tokenFile, JSON.stringify({ email, refresh_token: refreshToken, client: "default" }));
+
+    try {
+      await execFileAsync(GOG_CLI_PATH, ["auth", "tokens", "import", tokenFile, "--no-input"], { env, timeout: 10000 });
+      log(`Imported refresh token into gogCLI keyring for ${email}`, "gemini");
+    } catch (importErr: any) {
+      log(`gogCLI token import warning: ${importErr.message}`, "gemini");
+    }
+
+    try {
+      fs.unlinkSync(tokenFile);
+    } catch {}
+
+    try {
+      await execFileAsync(GOG_CLI_PATH, ["auth", "list", "--json"], { env, timeout: 5000 });
+    } catch {}
+
+    return { success: true, email };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+}
+
+export async function getGogCLIStatus(): Promise<{ authenticated: boolean; accounts: string[] }> {
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
+  const execFileAsync = promisify(execFile);
+  const GOG_CLI_PATH = path.join(process.cwd(), ".local", "bin", "gog");
+  const GOG_KEYRING_PASSWORD = "nami-keyring";
+  const env = { ...process.env, GOG_KEYRING_PASSWORD };
+
+  try {
+    const { stdout } = await execFileAsync(GOG_CLI_PATH, ["auth", "list", "--json"], { env, timeout: 5000 });
+    const data = JSON.parse(stdout);
+    const accounts: string[] = [];
+    if (Array.isArray(data)) {
+      for (const entry of data) {
+        if (entry.email) accounts.push(entry.email);
+      }
+    } else if (data.email) {
+      accounts.push(data.email);
+    }
+    return { authenticated: accounts.length > 0, accounts };
+  } catch {
+    return { authenticated: false, accounts: [] };
+  }
+}
+
+export async function syncGogCLIOnBoot(): Promise<void> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) return;
+
+  try {
+    const gogStatus = await getGogCLIStatus();
+    if (gogStatus.authenticated) {
+      log(`gogCLI already authenticated: ${gogStatus.accounts.join(", ")}`, "gemini");
+      return;
+    }
+
+    const accessToken = await getGeminiAccessToken();
+    const result = await syncGogCLI(refreshToken, accessToken);
+    if (result.success) {
+      log(`gogCLI synced on boot: ${result.email}`, "gemini");
+    } else {
+      log(`gogCLI boot sync skipped: ${result.error}`, "gemini");
+    }
+  } catch (err: any) {
+    log(`gogCLI boot sync error: ${err.message}`, "gemini");
   }
 }
 

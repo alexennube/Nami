@@ -172,7 +172,7 @@ export default function Settings() {
     queryKey: ["/api/models/gemini"],
     staleTime: 5 * 60 * 1000,
   });
-  const { data: googleAuthStatus } = useQuery<{ authenticated: boolean; missing: string[] }>({
+  const { data: googleAuthStatus } = useQuery<{ authenticated: boolean; missing: string[]; gogCLI?: { authenticated: boolean; accounts: string[] } }>({
     queryKey: ["/api/auth/google/status"],
   });
   const { toast } = useToast();
@@ -362,6 +362,17 @@ export default function Settings() {
                   <span>Not authenticated{googleAuthStatus?.missing?.length ? `: ${googleAuthStatus.missing.join(", ")}` : ""}</span>
                 </div>
               )}
+              {googleAuthStatus?.gogCLI?.authenticated ? (
+                <div className="flex items-center gap-2 text-xs text-emerald-400" data-testid="status-gogcli-connected">
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  <span>Google Workspace: {googleAuthStatus.gogCLI.accounts?.join(", ") || "Connected"}</span>
+                </div>
+              ) : googleAuthStatus?.authenticated ? (
+                <div className="flex items-center gap-2 text-xs text-amber-400" data-testid="status-gogcli-disconnected">
+                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <span>Google Workspace: Not connected (re-authenticate to enable)</span>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -398,7 +409,7 @@ export default function Settings() {
             </div>
 
             <div className="text-[10px] text-muted-foreground space-y-1">
-              <p>Uses Google OAuth2 with your Client ID and Client Secret. Click "Authenticate with Google" to sign in and grant Gemini API access.</p>
+              <p>Uses Google OAuth2 with your Client ID and Client Secret. Click "Authenticate with Google" to sign in and grant access to Gemini API and Google Workspace (Gmail, Calendar, Drive, etc.).</p>
               <p>
                 Add this callback URL to your{" "}
                 <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-primary underline">

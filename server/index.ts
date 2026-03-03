@@ -189,6 +189,10 @@ app.use((req, res, next) => {
           getSwarm: (swarmId: string) => storageInstance.getSwarm(swarmId),
         });
         await engine.bootEngine();
+
+        import("./gemini").then(({ syncGogCLIOnBoot }) => {
+          syncGogCLIOnBoot().catch(() => {});
+        });
       } catch (err: any) {
         log(`Engine auto-boot failed (non-fatal): ${err.message}`, "engine");
       }

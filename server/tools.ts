@@ -750,7 +750,8 @@ const googleWorkspaceTool: NamiTool = {
     if (args.json_output === "true") cmdParts.push("--json");
 
     return new Promise((resolve) => {
-      execFile(GOG_CLI_PATH, cmdParts, { cwd: WORKSPACE_ROOT, timeout: 30000, maxBuffer: 1024 * 512 }, (error, stdout, stderr) => {
+      const gogEnv = { ...process.env, GOG_KEYRING_PASSWORD: "nami-keyring" };
+      execFile(GOG_CLI_PATH, cmdParts, { cwd: WORKSPACE_ROOT, timeout: 30000, maxBuffer: 1024 * 512, env: gogEnv }, (error, stdout, stderr) => {
         const output: string[] = [];
         if (stdout.trim()) output.push(stdout.trim());
         if (stderr.trim()) output.push(`STDERR: ${stderr.trim()}`);

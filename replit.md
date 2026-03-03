@@ -39,7 +39,7 @@ Nami employs a hierarchical agent structure: `Nami` (main orchestrator), `Spawn`
 
 ## External Dependencies
 - **OpenRouter.ai:** For multi-model AI inference via BYOK.
-- **Google Gemini API:** For AI inference, utilizing OAuth2 for authentication.
+- **Google Gemini API:** For AI inference, utilizing OAuth2 for authentication. The same OAuth flow also provisions gogCLI for Google Workspace access (Gmail, Calendar, Drive, etc.).
 - **PostgreSQL:** For persisting critical configuration and settings.
 - **Chromium:** Headless browser used by the `web_browse` tool.
 - **gogCLI:** Google Workspace Command Line Interface (v0.11.0) for `google_workspace` tool.

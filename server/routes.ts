@@ -6,7 +6,7 @@ import path from "path";
 import { storage } from "./storage";
 import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
-import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCodeForTokens, saveRefreshToken, hasValidGeminiCredentials } from "./gemini";
+import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCodeForTokens, saveRefreshToken, hasValidGeminiCredentials, syncGogCLI, getGogCLIStatus } from "./gemini";
 import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
@@ -554,7 +554,8 @@ export async function registerRoutes(
 
   app.get("/api/auth/google/status", async (_req, res) => {
     const creds = hasValidGeminiCredentials();
-    res.json({ authenticated: creds.valid, missing: creds.missing });
+    const gogStatus = await getGogCLIStatus();
+    res.json({ authenticated: creds.valid, missing: creds.missing, gogCLI: gogStatus });
   });
 
   app.get("/api/auth/google", async (req, res) => {
@@ -589,6 +590,16 @@ export async function registerRoutes(
       const tokens = await exchangeCodeForTokens(code, redirectUri);
       saveRefreshToken(tokens.refresh_token);
       log("Google OAuth completed — refresh token saved", "gemini");
+
+      syncGogCLI(tokens.refresh_token, tokens.access_token).then((result) => {
+        if (result.success) {
+          log(`gogCLI synced with Google account: ${result.email}`, "gemini");
+        } else {
+          log(`gogCLI sync warning: ${result.error}`, "gemini");
+        }
+      }).catch((err) => {
+        log(`gogCLI sync error: ${err.message}`, "gemini");
+      });
 
       res.redirect("/settings?google_auth=success");
     } catch (err: any) {
