@@ -28,6 +28,7 @@ function CreateSwarmDialog() {
   const [objective, setObjective] = useState("");
   const [steps, setSteps] = useState<NewStep[]>([]);
   const [showSteps, setShowSteps] = useState(false);
+  const [maxCycles, setMaxCycles] = useState(20);
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleType, setScheduleType] = useState<"interval" | "daily" | "weekly">("interval");
   const [intervalHours, setIntervalHours] = useState(24);
@@ -52,7 +53,7 @@ function CreateSwarmDialog() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const payload: any = { name, goal, objective, status: "pending" };
+      const payload: any = { name, goal, objective, status: "pending", maxCycles };
       if (steps.length > 0) {
         payload.steps = steps.filter((s) => s.name && s.instruction);
       }
@@ -80,6 +81,7 @@ function CreateSwarmDialog() {
       setGoal("");
       setObjective("");
       setSteps([]);
+      setMaxCycles(20);
       setScheduleEnabled(false);
       setScheduleType("interval");
       setIntervalHours(24);
@@ -124,6 +126,24 @@ function CreateSwarmDialog() {
               className="resize-none min-h-[80px]"
               data-testid="input-swarm-objective"
             />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="swarm-max-cycles">Max Cycles</Label>
+            <div className="flex items-center gap-3">
+              <Input
+                id="swarm-max-cycles"
+                type="number"
+                min={0}
+                value={maxCycles}
+                onChange={(e) => setMaxCycles(parseInt(e.target.value) || 0)}
+                className="w-24"
+                data-testid="input-swarm-max-cycles"
+              />
+              <span className="text-xs text-muted-foreground">
+                {maxCycles === 0 ? "Unlimited — runs until the queen marks it complete" : `${maxCycles} cycles max`}
+              </span>
+            </div>
           </div>
 
           <div className="border-t pt-3">

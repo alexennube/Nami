@@ -953,7 +953,9 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
     { role: "system", content: SWARM_QUEEN_SYSTEM_PROMPT(swarm.goal, swarm.objective) },
   ];
 
-  const effectiveMaxCycles = maxCycles || swarm.maxCycles || QUEEN_MAX_CYCLES;
+  const rawMaxCycles = maxCycles ?? swarm.maxCycles ?? QUEEN_MAX_CYCLES;
+  const isUnlimited = rawMaxCycles === 0;
+  const effectiveMaxCycles = isUnlimited ? Infinity : rawMaxCycles;
   for (let cycle = 0; cycle < effectiveMaxCycles; cycle++) {
     const currentSwarm = await storage.getSwarm(swarmId);
     if (!currentSwarm || currentSwarm.status !== "active") {
@@ -972,7 +974,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
     const messages = await storage.getMessages(undefined, swarmId);
     const recentMessages = messages.slice(-10);
 
-    let cycleContext = `[CYCLE ${cycle + 1}/${QUEEN_MAX_CYCLES}]\n`;
+    let cycleContext = `[CYCLE ${cycle + 1}/${isUnlimited ? "∞" : effectiveMaxCycles}]\n`;
     cycleContext += `Spawns: ${spawns.length}\n`;
     for (const s of spawns) {
       const spawnMsgs = messages.filter((m) => m.fromAgentId === s.id || m.toAgentId === s.id);

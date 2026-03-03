@@ -247,6 +247,7 @@ export async function registerRoutes(
         goal: data.goal,
         objective: data.objective,
         steps: data.steps,
+        maxCycles: data.maxCycles,
         schedule: data.schedule,
       });
       res.status(201).json(swarm);
