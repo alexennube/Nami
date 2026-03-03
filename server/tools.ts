@@ -1315,13 +1315,13 @@ const xGetStatusTool: NamiTool = {
 
 const browserControlTool: NamiTool = {
   name: "browser_control",
-  description: "Control the user's browser via the Namiextend Chrome extension. Can click elements, type text, scroll, navigate to URLs, or read page content. Requires the user to have the Namiextend extension connected.",
+  description: "Control the user's browser via the Namiextend Chrome extension. Actions: click (CSS selector), type (text into element), scroll (element or page), navigate (go to URL), read_page (get page content), get_state (get latest page snapshot from browser), get_logs (view recent browser action history). After each action, the extension reports back the page URL, title, and text content so you can see what happened.",
   category: "browser",
   enabled: true,
   parameters: {
     type: "object",
     properties: {
-      action: { type: "string", description: "The browser action to perform: click, type, scroll, navigate, or read_page" },
+      action: { type: "string", description: "The browser action to perform: click, type, scroll, navigate, read_page, get_state (latest page snapshot), or get_logs (recent action history)" },
       selector: { type: "string", description: "CSS selector of the target element (e.g. '#login-btn', '.search-input', 'button[type=submit]'). Not needed for navigate or read_page." },
       text: { type: "string", description: "Text to type (for 'type' action) or URL to navigate to (for 'navigate' action)" },
       wait_ms: { type: "string", description: "Milliseconds to wait after the action (default: 0)" },
@@ -1335,9 +1335,23 @@ const browserControlTool: NamiTool = {
     const text = args.text || "";
     const waitMs = parseInt(args.wait_ms || "0", 10) || 0;
 
-    const validActions = ["click", "type", "scroll", "navigate", "read_page"];
+    const validActions = ["click", "type", "scroll", "navigate", "read_page", "get_state", "get_logs"];
     if (!validActions.includes(action)) {
       return `Error: Invalid action '${action}'. Valid actions: ${validActions.join(", ")}`;
+    }
+
+    if (action === "get_state") {
+      const { getLatestPageState } = await import("./namiextend");
+      const state = getLatestPageState();
+      if (!state) return "No page state available yet. The browser extension has not reported any page data.";
+      return `Current browser page state (captured ${new Date(state.timestamp).toISOString()}):\nURL: ${state.url}\nTitle: ${state.title}\nContent:\n${state.text}`;
+    }
+
+    if (action === "get_logs") {
+      const { getRecentBrowserLogs } = await import("./namiextend");
+      const logs = await getRecentBrowserLogs(10);
+      if (logs.length === 0) return "No browser action logs found.";
+      return logs.map((l: any) => `[${l.created_at}] ${l.action} | ${l.selector || ""} | ${(l.content || "").substring(0, 200)}`).join("\n");
     }
 
     if (["click", "type", "scroll"].includes(action) && !selector) {

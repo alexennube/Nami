@@ -111,6 +111,12 @@ export async function registerRoutes(
     res.json({ hasToken: !!stored });
   });
 
+  app.get("/api/namiextend/logs", async (_req, res) => {
+    const { getRecentBrowserLogs } = await import("./namiextend");
+    const logs = await getRecentBrowserLogs(20);
+    res.json(logs);
+  });
+
   app.put("/api/namiextend/token", async (req, res) => {
     const { token } = req.body;
     if (!token || typeof token !== "string" || token.trim().length < 4) {
