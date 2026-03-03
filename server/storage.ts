@@ -2,7 +2,7 @@ import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, Sys
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { dbGet, dbSet } from "./db-persist";
+import { dbGet, dbSet, dbUpsertRow, dbInsertRow, dbDeleteRow, dbDeleteWhere, dbGetAllRows, dbGetRowsByColumn, dbInit, dbUpsertByKey, dbDeleteByKey, dbTruncate } from "./db-persist";
 
 const PERSIST_DIR = path.join(process.cwd(), ".nami-data");
 const CONFIG_FILE = path.join(PERSIST_DIR, "config.json");
@@ -281,6 +281,133 @@ export class MemStorage implements IStorage {
       }
 
       console.log(`[storage] DB settings loaded (model: ${this.config.defaultModel}, heartbeat: ${this.heartbeatConfig.enabled}, engine: ${this.engineState})`);
+
+      const dbAgents = await dbGetAllRows<Agent>("nami_agents");
+      if (dbAgents.length > 0) {
+        this.agents.clear();
+        for (const agent of dbAgents) {
+          if (agent.status === "running") agent.status = "idle";
+          this.agents.set(agent.id, agent);
+        }
+        console.log(`[storage] DB loaded ${dbAgents.length} agents`);
+      } else if (this.agents.size > 0) {
+        for (const agent of this.agents.values()) {
+          await dbUpsertRow("nami_agents", agent.id, agent);
+        }
+        console.log(`[storage] Migrated ${this.agents.size} agents to DB`);
+      }
+
+      const dbSwarms = await dbGetAllRows<Swarm>("nami_swarms");
+      if (dbSwarms.length > 0) {
+        this.swarms.clear();
+        let interruptedCount = 0;
+        for (const swarm of dbSwarms) {
+          if (swarm.status === "active") {
+            swarm.status = "failed";
+            interruptedCount++;
+          }
+          this.swarms.set(swarm.id, swarm);
+        }
+        if (interruptedCount > 0) {
+          for (const swarm of this.swarms.values()) {
+            if (swarm.status === "failed") await dbUpsertRow("nami_swarms", swarm.id, swarm);
+          }
+          console.log(`[storage] Marked ${interruptedCount} active swarm(s) as failed (server restart)`);
+        }
+        console.log(`[storage] DB loaded ${dbSwarms.length} swarms`);
+      } else if (this.swarms.size > 0) {
+        for (const swarm of this.swarms.values()) {
+          await dbUpsertRow("nami_swarms", swarm.id, swarm);
+        }
+        console.log(`[storage] Migrated ${this.swarms.size} swarms to DB`);
+      }
+
+      const dbSessions = await dbGetAllRows<ChatSession>("nami_chat_sessions");
+      if (dbSessions.length > 0) {
+        this.chatSessions.clear();
+        for (const session of dbSessions) {
+          this.chatSessions.set(session.id, session);
+        }
+        console.log(`[storage] DB loaded ${dbSessions.length} chat sessions`);
+      } else if (this.chatSessions.size > 0) {
+        for (const session of this.chatSessions.values()) {
+          await dbUpsertRow("nami_chat_sessions", session.id, session);
+        }
+        console.log(`[storage] Migrated ${this.chatSessions.size} chat sessions to DB`);
+      }
+
+      const dbChatMessages = await dbGetAllRows<ChatMessage>("nami_chat_messages");
+      if (dbChatMessages.length > 0) {
+        this.chatHistory = dbChatMessages;
+        console.log(`[storage] DB loaded ${dbChatMessages.length} chat messages`);
+      } else if (this.chatHistory.length > 0) {
+        for (const msg of this.chatHistory) {
+          await dbInsertRow("nami_chat_messages", msg.id, msg, { session_id: msg.sessionId || "default" });
+        }
+        console.log(`[storage] Migrated ${this.chatHistory.length} chat messages to DB`);
+      }
+
+      const dbSwarmMessages = await dbGetAllRows<SwarmMessage>("nami_swarm_messages");
+      if (dbSwarmMessages.length > 0) {
+        this.swarmMessages = dbSwarmMessages;
+        console.log(`[storage] DB loaded ${dbSwarmMessages.length} swarm messages`);
+      } else if (this.swarmMessages.length > 0) {
+        for (const msg of this.swarmMessages) {
+          await dbInsertRow("nami_swarm_messages", msg.id, msg, { swarm_id: msg.swarmId });
+        }
+        console.log(`[storage] Migrated ${this.swarmMessages.length} swarm messages to DB`);
+      }
+
+      const dbThoughts = await dbGetAllRows<Thought>("nami_thoughts");
+      if (dbThoughts.length > 0) {
+        this.thoughts = dbThoughts;
+        console.log(`[storage] DB loaded ${dbThoughts.length} thoughts`);
+      } else if (this.thoughts.length > 0) {
+        for (const t of this.thoughts) {
+          await dbInsertRow("nami_thoughts", t.id, t);
+        }
+        console.log(`[storage] Migrated ${this.thoughts.length} thoughts to DB`);
+      }
+
+      const dbMemories = await dbGetAllRows<Memory>("nami_memories");
+      if (dbMemories.length > 0) {
+        this.memories.clear();
+        for (const m of dbMemories) {
+          this.memories.set(m.id, m);
+        }
+        console.log(`[storage] DB loaded ${dbMemories.length} memories`);
+      } else if (this.memories.size > 0) {
+        for (const m of this.memories.values()) {
+          await dbInsertRow("nami_memories", m.id, m);
+        }
+        console.log(`[storage] Migrated ${this.memories.size} memories to DB`);
+      }
+
+      const dbUsage = await dbGetAllRows<UsageRecord>("nami_usage");
+      if (dbUsage.length > 0) {
+        this.usageRecords = dbUsage;
+        console.log(`[storage] DB loaded ${dbUsage.length} usage records`);
+      } else if (this.usageRecords.length > 0) {
+        for (const u of this.usageRecords) {
+          await dbInsertRow("nami_usage", u.id, u);
+        }
+        console.log(`[storage] Migrated ${this.usageRecords.length} usage records to DB`);
+      }
+
+      const dbDocs = await dbGetAllRows<DocPage>("nami_docs");
+      if (dbDocs.length > 0) {
+        this.docs.clear();
+        for (const d of dbDocs) {
+          this.docs.set(d.slug, d);
+        }
+        console.log(`[storage] DB loaded ${dbDocs.length} docs`);
+      } else if (this.docs.size > 0) {
+        for (const d of this.docs.values()) {
+          await dbUpsertByKey("nami_docs", "slug", d.slug, d);
+        }
+        console.log(`[storage] Migrated ${this.docs.size} docs to DB`);
+      }
+
     } catch (err: any) {
       console.log(`[storage] DB settings load skipped: ${err.message}`);
     }
@@ -300,6 +427,7 @@ export class MemStorage implements IStorage {
     const agent: Agent = { ...data, id, createdAt: now, lastActiveAt: now, tokensUsed: 0, messagesProcessed: 0 };
     this.agents.set(id, agent);
     this.persistAgents();
+    dbUpsertRow("nami_agents", agent.id, agent).catch((e) => console.log(`[storage] DB agent insert error: ${e.message}`));
     return agent;
   }
 
@@ -309,12 +437,16 @@ export class MemStorage implements IStorage {
     const updated = { ...agent, ...updates, lastActiveAt: new Date().toISOString() };
     this.agents.set(id, updated);
     this.persistAgents();
+    dbUpsertRow("nami_agents", updated.id, updated).catch((e) => console.log(`[storage] DB agent update error: ${e.message}`));
     return updated;
   }
 
   async deleteAgent(id: string): Promise<boolean> {
     const result = this.agents.delete(id);
-    if (result) this.persistAgents();
+    if (result) {
+      this.persistAgents();
+      dbDeleteRow("nami_agents", id).catch((e) => console.log(`[storage] DB agent delete error: ${e.message}`));
+    }
     return result;
   }
 
@@ -370,6 +502,7 @@ export class MemStorage implements IStorage {
     };
     this.swarms.set(id, swarm);
     this.persistSwarms();
+    dbUpsertRow("nami_swarms", swarm.id, swarm).catch((e) => console.log(`[storage] DB swarm insert error: ${e.message}`));
     return swarm;
   }
 
@@ -379,12 +512,17 @@ export class MemStorage implements IStorage {
     const updated = { ...swarm, ...updates };
     this.swarms.set(id, updated);
     this.persistSwarms();
+    dbUpsertRow("nami_swarms", updated.id, updated).catch((e) => console.log(`[storage] DB swarm update error: ${e.message}`));
     return updated;
   }
 
   async deleteSwarm(id: string): Promise<boolean> {
     const result = this.swarms.delete(id);
-    if (result) this.persistSwarms();
+    if (result) {
+      this.persistSwarms();
+      dbDeleteRow("nami_swarms", id).catch((e) => console.log(`[storage] DB swarm delete error: ${e.message}`));
+      dbDeleteWhere("nami_swarm_messages", "swarm_id", id).catch((e) => console.log(`[storage] DB swarm messages delete error: ${e.message}`));
+    }
     return result;
   }
 
@@ -468,6 +606,7 @@ export class MemStorage implements IStorage {
     const session: ChatSession = { id: randomUUID(), name, createdAt: now, updatedAt: now };
     this.chatSessions.set(session.id, session);
     this.persistChatSessions();
+    dbUpsertRow("nami_chat_sessions", session.id, session).catch((e) => console.log(`[storage] DB chat session insert error: ${e.message}`));
     return session;
   }
 
@@ -477,6 +616,7 @@ export class MemStorage implements IStorage {
     session.name = name;
     session.updatedAt = new Date().toISOString();
     this.persistChatSessions();
+    dbUpsertRow("nami_chat_sessions", session.id, session).catch((e) => console.log(`[storage] DB chat session update error: ${e.message}`));
     return session;
   }
 
@@ -487,6 +627,8 @@ export class MemStorage implements IStorage {
       this.chatHistory = this.chatHistory.filter((m) => m.sessionId !== id);
       this.persistChat();
       this.persistChatSessions();
+      dbDeleteRow("nami_chat_sessions", id).catch((e) => console.log(`[storage] DB chat session delete error: ${e.message}`));
+      dbDeleteWhere("nami_chat_messages", "session_id", id).catch((e) => console.log(`[storage] DB chat messages delete error: ${e.message}`));
       if (this.activeChatSessionId === id) {
         this.activeChatSessionId = "default";
       }
@@ -511,23 +653,30 @@ export class MemStorage implements IStorage {
     const sessionId = data.sessionId || this.activeChatSessionId;
     if (!this.chatSessions.has(sessionId)) {
       const now = new Date().toISOString();
-      this.chatSessions.set(sessionId, { id: sessionId, name: sessionId === "default" ? "Main Chat" : "Chat", createdAt: now, updatedAt: now });
+      const newSession = { id: sessionId, name: sessionId === "default" ? "Main Chat" : "Chat", createdAt: now, updatedAt: now };
+      this.chatSessions.set(sessionId, newSession);
       this.persistChatSessions();
+      dbUpsertRow("nami_chat_sessions", newSession.id, newSession).catch((e) => console.log(`[storage] DB chat session auto-create error: ${e.message}`));
     }
     const msg: ChatMessage = { ...data, sessionId, id: randomUUID(), timestamp: new Date().toISOString() };
     this.chatHistory.push(msg);
     const MAX_CHAT = 500;
     const sessionMsgs = this.chatHistory.filter((m) => m.sessionId === sessionId);
     if (sessionMsgs.length > MAX_CHAT) {
-      const keepIds = new Set(sessionMsgs.slice(-MAX_CHAT).map((m) => m.id));
-      this.chatHistory = this.chatHistory.filter((m) => m.sessionId !== sessionId || keepIds.has(m.id));
+      const removeIds = new Set(sessionMsgs.slice(0, sessionMsgs.length - MAX_CHAT).map((m) => m.id));
+      this.chatHistory = this.chatHistory.filter((m) => m.sessionId !== sessionId || !removeIds.has(m.id));
+      for (const removeId of removeIds) {
+        dbDeleteRow("nami_chat_messages", removeId).catch(() => {});
+      }
     }
     const session = this.chatSessions.get(sessionId);
     if (session) {
       session.updatedAt = new Date().toISOString();
       this.persistChatSessions();
+      dbUpsertRow("nami_chat_sessions", session.id, session).catch(() => {});
     }
     this.persistChat();
+    dbInsertRow("nami_chat_messages", msg.id, msg, { session_id: sessionId }).catch((e) => console.log(`[storage] DB chat message insert error: ${e.message}`));
     return msg;
   }
 
@@ -535,6 +684,7 @@ export class MemStorage implements IStorage {
     const sid = sessionId || this.activeChatSessionId;
     this.chatHistory = this.chatHistory.filter((m) => m.sessionId !== sid);
     this.persistChat();
+    dbDeleteWhere("nami_chat_messages", "session_id", sid).catch((e) => console.log(`[storage] DB chat clear error: ${e.message}`));
   }
 
   private persistChat() {
@@ -554,12 +704,14 @@ export class MemStorage implements IStorage {
     this.thoughts.push(thought);
     if (this.thoughts.length > 500) this.thoughts = this.thoughts.slice(-500);
     this.persistThoughts();
+    dbInsertRow("nami_thoughts", thought.id, thought).catch((e) => console.log(`[storage] DB thought insert error: ${e.message}`));
     return thought;
   }
 
   async clearThoughts(): Promise<void> {
     this.thoughts = [];
     this.persistThoughts();
+    dbTruncate("nami_thoughts").catch(() => {});
   }
 
   private persistThoughts() {
@@ -576,6 +728,7 @@ export class MemStorage implements IStorage {
     const memory: Memory = { ...data, id, createdAt: now, lastAccessedAt: now };
     this.memories.set(id, memory);
     this.persistMemories();
+    dbUpsertRow("nami_memories", memory.id, memory).catch((e) => console.log(`[storage] DB memory insert error: ${e.message}`));
     return memory;
   }
 
@@ -585,12 +738,14 @@ export class MemStorage implements IStorage {
     const updated = { ...memory, ...updates };
     this.memories.set(id, updated);
     this.persistMemories();
+    dbUpsertRow("nami_memories", updated.id, updated).catch((e) => console.log(`[storage] DB memory update error: ${e.message}`));
     return updated;
   }
 
   async deleteMemory(id: string): Promise<boolean> {
     const result = this.memories.delete(id);
     this.persistMemories();
+    if (result) dbDeleteRow("nami_memories", id).catch((e) => console.log(`[storage] DB memory delete error: ${e.message}`));
     return result;
   }
 
@@ -644,6 +799,7 @@ export class MemStorage implements IStorage {
     this.swarmMessages.push(msg);
     if (this.swarmMessages.length > 5000) this.swarmMessages = this.swarmMessages.slice(-5000);
     this.persistSwarmMessages();
+    dbInsertRow("nami_swarm_messages", msg.id, msg, { swarm_id: msg.swarmId }).catch((e) => console.log(`[storage] DB swarm message insert error: ${e.message}`));
     return msg;
   }
 
@@ -701,12 +857,14 @@ export class MemStorage implements IStorage {
     };
     this.usageRecords.push(entry);
     debouncedSave(USAGE_FILE, () => this.usageRecords);
+    dbInsertRow("nami_usage", entry.id, entry).catch((e) => console.log(`[storage] DB usage insert error: ${e.message}`));
     return entry;
   }
 
   async clearUsageRecords(): Promise<void> {
     this.usageRecords = [];
     saveJson(USAGE_FILE, []);
+    dbTruncate("nami_usage").catch(() => {});
   }
 
   async getDocs(): Promise<DocPage[]> {
@@ -727,12 +885,14 @@ export class MemStorage implements IStorage {
     };
     this.docs.set(data.slug, doc);
     this.persistDocs();
+    dbUpsertByKey("nami_docs", "slug", doc.slug, doc).catch((e) => console.log(`[storage] DB doc upsert error: ${e.message}`));
     return doc;
   }
 
   async deleteDoc(slug: string): Promise<boolean> {
     const result = this.docs.delete(slug);
     this.persistDocs();
+    if (result) dbDeleteByKey("nami_docs", "slug", slug).catch((e) => console.log(`[storage] DB doc delete error: ${e.message}`));
     return result;
   }
 

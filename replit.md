@@ -22,7 +22,7 @@ Nami employs a hierarchical agent structure: `Nami` (main orchestrator), `Spawn`
 - **Backend:** Express.js and TypeScript, using in-memory storage for MVP and file-based persistence for configuration and agent states.
 - **Inference:** Dual-provider system supporting OpenRouter.ai (BYOK) and Google Gemini (OAuth2). Both leverage the OpenAI SDK with custom base URLs for flexibility across 400+ models.
 - **Communication:** WebSockets for real-time events and a REST API for CRUD operations.
-- **Persistence:** All agent states, swarms, thoughts, memories, chat history, and configuration are persisted to disk in a `.nami-data/` directory, with critical settings also stored in a PostgreSQL database for resilience across server restarts.
+- **Persistence:** Dual-write system — all data (agents, swarms, chat sessions/messages, swarm messages, thoughts, memories, usage records, docs, config, heartbeat, engine state) is persisted to both disk (`.nami-data/` directory) and PostgreSQL. On startup, data loads from PostgreSQL first (with automatic one-time migration from disk files). This ensures data survives both server restarts and deployments.
 - **Tools:** A comprehensive tool registry (`file_read`, `file_write`, `file_edit`, `file_search`, `shell_exec`, `web_browse`, `web_search`, `google_workspace`, `ennube_mcp`, `create_swarm`, `manage_swarm`, `server_restart`, `self_inspect`, `docs_read/write`, `x_post_tweet`, `x_delete_tweet`) with a permission layer and function calling integration for LLMs.
 
 **Key Features:**
