@@ -11,6 +11,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Send, ChevronDown, ChevronUp, Heart, PanelRightClose, Clock, Zap, Moon, AlertTriangle, Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Check } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatMessage, ChatSession, EngineStatus, HeartbeatLog } from "@shared/schema";
 
 export default function Chat() {
@@ -570,10 +572,52 @@ function MessageBubble({ message }: { message: ChatMessage }) {
       <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
         {senderLabel}
       </p>
-      <div className={`rounded-md px-3 md:px-4 py-3 max-w-[85vw] md:max-w-lg ${isSleep ? "bg-card border border-border" : "bg-card border border-border"}`}>
-        <p className={`text-sm whitespace-pre-wrap break-words ${isSleep ? "font-mono text-muted-foreground" : ""}`} data-testid={`text-message-content-${message.id}`}>
-          {message.content}
-        </p>
+      <div className={`rounded-md px-3 md:px-4 py-3 max-w-[85vw] md:max-w-2xl ${isSleep ? "bg-card border border-border" : "bg-card border border-border"}`}>
+        {isSleep ? (
+          <p className="text-sm whitespace-pre-wrap break-words font-mono text-muted-foreground" data-testid={`text-message-content-${message.id}`}>
+            {message.content}
+          </p>
+        ) : (
+          <div className="prose prose-sm prose-invert max-w-none break-words" data-testid={`text-message-content-${message.id}`}>
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                p: ({ children }) => <p className="mb-2 last:mb-0 text-sm leading-relaxed">{children}</p>,
+                strong: ({ children }) => <strong className="font-semibold text-foreground">{children}</strong>,
+                em: ({ children }) => <em className="italic">{children}</em>,
+                h1: ({ children }) => <h1 className="text-base font-bold mt-3 mb-1.5 text-foreground">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-sm font-bold mt-3 mb-1.5 text-foreground">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-sm font-semibold mt-2 mb-1 text-foreground">{children}</h3>,
+                h4: ({ children }) => <h4 className="text-sm font-semibold mt-2 mb-1 text-foreground">{children}</h4>,
+                ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-0.5 text-sm">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-0.5 text-sm">{children}</ol>,
+                li: ({ children }) => <li className="text-sm leading-relaxed">{children}</li>,
+                code: ({ className, children, ...props }) => {
+                  const isInline = !className;
+                  return isInline ? (
+                    <code className="bg-muted px-1 py-0.5 rounded text-xs font-mono text-primary" {...props}>{children}</code>
+                  ) : (
+                    <code className={`block bg-muted/50 border border-border rounded-md p-3 my-2 text-xs font-mono overflow-x-auto whitespace-pre ${className || ""}`} {...props}>{children}</code>
+                  );
+                },
+                pre: ({ children }) => <pre className="bg-muted/50 border border-border rounded-md p-3 my-2 overflow-x-auto">{children}</pre>,
+                table: ({ children }) => (
+                  <div className="overflow-x-auto my-2">
+                    <table className="min-w-full text-xs border-collapse border border-border">{children}</table>
+                  </div>
+                ),
+                thead: ({ children }) => <thead className="bg-muted/50">{children}</thead>,
+                th: ({ children }) => <th className="border border-border px-2 py-1.5 text-left font-semibold text-foreground">{children}</th>,
+                td: ({ children }) => <td className="border border-border px-2 py-1.5">{children}</td>,
+                a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{children}</a>,
+                blockquote: ({ children }) => <blockquote className="border-l-2 border-primary/50 pl-3 my-2 text-muted-foreground italic">{children}</blockquote>,
+                hr: () => <hr className="my-3 border-border" />,
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        )}
       </div>
       {message.tokensUsed > 0 && (
         <span className="text-[9px] text-muted-foreground font-mono mt-1">{message.tokensUsed} tokens</span>
