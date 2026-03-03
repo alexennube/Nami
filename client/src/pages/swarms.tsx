@@ -333,19 +333,21 @@ function SwarmCard({ swarm }: { swarm: Swarm }) {
   return (
     <Card data-testid={`card-swarm-${swarm.id}`}>
       <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
             <div className="flex items-center justify-center w-9 h-9 rounded-md bg-amber-500/10 shrink-0">
               <Network className="w-4 h-4 text-amber-600 dark:text-amber-400" />
             </div>
             <div className="flex flex-col gap-0.5 min-w-0">
               <Link href={`/swarms/${swarm.id}`}>
-                <span className="text-sm font-medium truncate hover:underline cursor-pointer" data-testid={`link-swarm-name-${swarm.id}`}>{swarm.name}</span>
+                <span className="text-sm font-medium block truncate hover:underline cursor-pointer" data-testid={`link-swarm-name-${swarm.id}`}>{swarm.name}</span>
               </Link>
               <span className="text-[11px] text-muted-foreground truncate">{swarm.agentIds.length} agents</span>
             </div>
           </div>
-          <StatusBadge status={swarm.status} />
+          <div className="shrink-0">
+            <StatusBadge status={swarm.status} />
+          </div>
         </div>
 
         <div className="mt-3 p-2 rounded-md bg-muted/30">
@@ -359,11 +361,13 @@ function SwarmCard({ swarm }: { swarm: Swarm }) {
         {queen && (
           <div className="flex items-center gap-2 mt-3 p-2 rounded-md bg-purple-500/5 border border-purple-500/10">
             <Crown className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
-            <div className="flex flex-col gap-0 min-w-0">
+            <div className="flex flex-col gap-0 min-w-0 flex-1">
               <span className="text-[11px] font-medium truncate">{queen.name}</span>
               <span className="text-[10px] text-muted-foreground">SwarmQueen</span>
             </div>
-            <StatusBadge status={queen.status} />
+            <div className="shrink-0 ml-auto">
+              <StatusBadge status={queen.status} />
+            </div>
           </div>
         )}
 
