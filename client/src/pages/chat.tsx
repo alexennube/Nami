@@ -21,6 +21,8 @@ export default function Chat() {
   const [newSessionName, setNewSessionName] = useState("");
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [waitingForReply, setWaitingForReply] = useState(false);
+  const messageCountRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -55,6 +57,15 @@ export default function Chat() {
     refetchInterval: 5000,
   });
 
+  useEffect(() => {
+    if (waitingForReply && messages.length > messageCountRef.current) {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && lastMsg.role === "assistant") {
+        setWaitingForReply(false);
+      }
+    }
+  }, [messages, waitingForReply]);
+
   const sendMutation = useMutation({
     mutationFn: async (message: string) => {
       const res = await apiRequest("POST", "/api/chat", { message, sessionId: activeSessionId });
@@ -75,18 +86,19 @@ export default function Chat() {
         timestamp: new Date().toISOString(),
       };
       queryClient.setQueryData<ChatMessage[]>(["/api/chat", activeSessionId], (old = []) => [...old, optimisticMsg]);
+      messageCountRef.current = (previous?.length || 0) + 1;
+      setWaitingForReply(true);
       return { previous };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/chat", activeSessionId] });
       queryClient.invalidateQueries({ queryKey: ["/api/chat/sessions"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/thoughts"] });
     },
     onError: (err: Error, _msg, context) => {
       if (context?.previous) {
         queryClient.setQueryData(["/api/chat", activeSessionId], context.previous);
       }
+      setWaitingForReply(false);
       toast({ title: "Failed to send message", description: err.message, variant: "destructive" });
     },
   });
@@ -150,7 +162,7 @@ export default function Chat() {
 
   function handleSend() {
     const msg = input.trim();
-    if (!msg || sendMutation.isPending) return;
+    if (!msg || sendMutation.isPending || waitingForReply) return;
     setInput("");
     sendMutation.mutate(msg);
   }
@@ -264,7 +276,7 @@ export default function Chat() {
               {messages.map((msg) => (
                 <MessageBubble key={msg.id} message={msg} />
               ))}
-              {sendMutation.isPending && (
+              {(sendMutation.isPending || waitingForReply) && (
                 <div>
                   <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Nami</p>
                   <div className="bg-card border border-border rounded-md p-4 max-w-lg">
@@ -296,7 +308,7 @@ export default function Chat() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  disabled={sendMutation.isPending}
+                  disabled={sendMutation.isPending || waitingForReply}
                   className="w-full bg-card border border-border rounded-md px-3 md:px-4 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground/50"
                   data-testid="input-chat-message"
                 />
@@ -327,7 +339,7 @@ export default function Chat() {
                 <Button
                   size="icon"
                   onClick={handleSend}
-                  disabled={!input.trim() || sendMutation.isPending}
+                  disabled={!input.trim() || sendMutation.isPending || waitingForReply}
                   data-testid="button-send-message"
                 >
                   <Send className="w-4 h-4" />

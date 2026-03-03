@@ -351,8 +351,12 @@ export async function registerRoutes(
         }
         storage.setActiveChatSessionId(sessionId);
       }
-      const result = await chatWithNami(message);
-      res.json(result);
+      res.json({ accepted: true, message: "Processing..." });
+
+      chatWithNami(message).catch((err) => {
+        log(`Chat inference error: ${err.message}`, "engine");
+        eventBus.emit({ type: "message_sent", data: { error: err.message } });
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
