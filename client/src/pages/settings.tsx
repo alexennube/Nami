@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Switch } from "@/components/ui/switch";
-import { Settings2, Key, Waypoints, Globe, Save, ExternalLink, Search, Check, Loader2, Brain, Twitter, CheckCircle, XCircle, AlertTriangle, Send, Sparkles } from "lucide-react";
+import { Settings2, Key, Waypoints, Globe, Save, ExternalLink, Search, Check, Loader2, Brain, Twitter, CheckCircle, XCircle, AlertTriangle, Send, Sparkles, Plug, Monitor } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import type { NamiConfig } from "@shared/schema";
 
@@ -562,6 +562,8 @@ export default function Settings() {
 
       <XIntegrationCard />
 
+      <NamiextendCard />
+
       <div className="flex justify-end">
         <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-settings">
           <Save className="w-4 h-4 mr-2" />
@@ -712,6 +714,117 @@ function XIntegrationCard() {
           <p className="text-[10px] text-muted-foreground">
             Nami and swarm agents can use the <span className="font-mono">x_post_tweet</span>, <span className="font-mono">x_delete_tweet</span>, and <span className="font-mono">x_get_status</span> tools
             to interact with your X account autonomously. Enable/disable them on the Tools page.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function NamiextendCard() {
+  const { toast } = useToast();
+  const [password, setPassword] = useState("");
+
+  const { data: status } = useQuery<{ connected: boolean; clients: number; wsUrl: string }>({
+    queryKey: ["/api/namiextend/status"],
+    refetchInterval: 5000,
+  });
+
+  const { data: tokenInfo } = useQuery<{ hasToken: boolean }>({
+    queryKey: ["/api/namiextend/token"],
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PUT", "/api/namiextend/token", { token: password });
+      return res.json();
+    },
+    onSuccess: () => {
+      setPassword("");
+      toast({ title: "Password saved", description: "Namiextend connection password has been updated." });
+      queryClient.invalidateQueries({ queryKey: ["/api/namiextend/token"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to save", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Monitor className="w-4 h-4 text-primary" />
+          <CardTitle className="text-sm">Browser Extension (Namiextend)</CardTitle>
+          {status?.connected ? (
+            <Badge variant="outline" className="ml-auto text-[10px] border-green-500 text-green-400">
+              <Plug className="w-3 h-3 mr-1" /> {status.clients} connected
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="ml-auto text-[10px] border-muted-foreground text-muted-foreground">
+              Disconnected
+            </Badge>
+          )}
+        </div>
+        <CardDescription className="text-[11px]">
+          Connect your browser extension to allow Nami to control browser actions.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-col gap-2">
+          <Label className="text-xs">WebSocket URL</Label>
+          <div className="flex gap-2">
+            <Input
+              readOnly
+              value={status?.wsUrl || "Loading..."}
+              className="text-xs font-mono"
+              data-testid="input-namiextend-url"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                navigator.clipboard.writeText(status?.wsUrl || "");
+                toast({ title: "Copied", description: "WebSocket URL copied to clipboard." });
+              }}
+              data-testid="button-copy-namiextend-url"
+            >
+              Copy
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label className="text-xs">
+            Connection Password
+            {tokenInfo?.hasToken && (
+              <span className="ml-2 text-green-400 text-[10px]">(set)</span>
+            )}
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder={tokenInfo?.hasToken ? "Enter new password to change" : "Set a password (min 4 chars)"}
+              className="text-xs"
+              data-testid="input-namiextend-password"
+            />
+            <Button
+              size="sm"
+              onClick={() => saveMutation.mutate()}
+              disabled={password.length < 4 || saveMutation.isPending}
+              data-testid="button-save-namiextend-password"
+            >
+              {saveMutation.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+            </Button>
+          </div>
+        </div>
+
+        <div className="border-t pt-3">
+          <p className="text-[10px] text-muted-foreground">
+            Your extension should send <span className="font-mono">{"{ type: \"auth\", token: \"<your password>\" }"}</span> as
+            its first message after connecting. Nami can then use the <span className="font-mono">browser_control</span> tool
+            to click, type, scroll, navigate, or read page content in your browser.
           </p>
         </div>
       </CardContent>

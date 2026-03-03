@@ -81,6 +81,16 @@ async function ensureTables(): Promise<void> {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_browser_logs (
+      id TEXT PRIMARY KEY,
+      action TEXT NOT NULL,
+      selector TEXT,
+      content TEXT,
+      agent_id TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
 }
 
 let initialized = false;

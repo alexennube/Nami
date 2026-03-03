@@ -10,6 +10,7 @@ import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCode
 import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
+import { dbGet, dbSet } from "./db-persist";
 import { engineMind } from "./engine-mind";
 
 export async function registerRoutes(
@@ -42,6 +43,81 @@ export async function registerRoutes(
         ws.send(data);
       }
     });
+  });
+
+  const { addBrowserClient, getBrowserStatus } = await import("./namiextend");
+  const namiextendWss = new WebSocketServer({ server: httpServer, path: "/ws/namiextend" });
+
+  namiextendWss.on("connection", (ws) => {
+    log("Namiextend connection attempt", "namiextend");
+    let authenticated = false;
+
+    const authTimeout = setTimeout(() => {
+      if (!authenticated) {
+        ws.close(4003, "Auth timeout");
+        log("Namiextend auth timeout — disconnected", "namiextend");
+      }
+    }, 10000);
+
+    ws.on("message", async (data) => {
+      if (authenticated) return;
+
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.type === "auth" && msg.token) {
+          const stored = await dbGet<string>("namiextend_token");
+          if (!stored) {
+            ws.close(4003, "No token configured");
+            clearTimeout(authTimeout);
+            log("Namiextend rejected: no token configured on server", "namiextend");
+            return;
+          }
+          if (msg.token !== stored) {
+            ws.close(4003, "Unauthorized");
+            clearTimeout(authTimeout);
+            log("Namiextend rejected: invalid token", "namiextend");
+            return;
+          }
+
+          authenticated = true;
+          clearTimeout(authTimeout);
+          addBrowserClient(ws);
+          ws.send(JSON.stringify({ type: "auth_ok" }));
+          log("Namiextend authenticated and connected", "namiextend");
+        }
+      } catch {
+        ws.close(4003, "Invalid message");
+        clearTimeout(authTimeout);
+      }
+    });
+
+    ws.on("close", () => {
+      clearTimeout(authTimeout);
+      if (authenticated) {
+        log("Namiextend disconnected", "namiextend");
+      }
+    });
+  });
+
+  app.get("/api/namiextend/status", async (_req, res) => {
+    const status = getBrowserStatus();
+    const host = _req.headers.host || "localhost:5000";
+    const protocol = _req.secure || _req.headers["x-forwarded-proto"] === "https" ? "wss" : "ws";
+    res.json({ ...status, wsUrl: `${protocol}://${host}/ws/namiextend` });
+  });
+
+  app.get("/api/namiextend/token", async (_req, res) => {
+    const stored = await dbGet<string>("namiextend_token");
+    res.json({ hasToken: !!stored });
+  });
+
+  app.put("/api/namiextend/token", async (req, res) => {
+    const { token } = req.body;
+    if (!token || typeof token !== "string" || token.trim().length < 4) {
+      return res.status(400).json({ message: "Token must be at least 4 characters." });
+    }
+    await dbSet("namiextend_token", token.trim());
+    res.json({ success: true });
   });
 
   app.get("/api/stats", async (_req, res) => {

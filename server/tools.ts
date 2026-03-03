@@ -1313,7 +1313,50 @@ const xGetStatusTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool];
+const browserControlTool: NamiTool = {
+  name: "browser_control",
+  description: "Control the user's browser via the Namiextend Chrome extension. Can click elements, type text, scroll, navigate to URLs, or read page content. Requires the user to have the Namiextend extension connected.",
+  category: "browser",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      action: { type: "string", description: "The browser action to perform: click, type, scroll, navigate, or read_page" },
+      selector: { type: "string", description: "CSS selector of the target element (e.g. '#login-btn', '.search-input', 'button[type=submit]'). Not needed for navigate or read_page." },
+      text: { type: "string", description: "Text to type (for 'type' action) or URL to navigate to (for 'navigate' action)" },
+      wait_ms: { type: "string", description: "Milliseconds to wait after the action (default: 0)" },
+    },
+    required: ["action"],
+  },
+  execute: async (args) => {
+    const { executeBrowserAction } = await import("./namiextend");
+    const action = args.action || "";
+    const selector = args.selector || "";
+    const text = args.text || "";
+    const waitMs = parseInt(args.wait_ms || "0", 10) || 0;
+
+    const validActions = ["click", "type", "scroll", "navigate", "read_page"];
+    if (!validActions.includes(action)) {
+      return `Error: Invalid action '${action}'. Valid actions: ${validActions.join(", ")}`;
+    }
+
+    if (["click", "type", "scroll"].includes(action) && !selector) {
+      return `Error: '${action}' action requires a CSS selector.`;
+    }
+
+    if (action === "type" && !text) {
+      return "Error: 'type' action requires text to type.";
+    }
+
+    if (action === "navigate" && !text) {
+      return "Error: 'navigate' action requires a URL.";
+    }
+
+    return executeBrowserAction(action, selector, text, waitMs);
+  },
+};
+
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool, browserControlTool];
 
 export function getTools(): NamiTool[] {
   return allTools;
