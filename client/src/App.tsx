@@ -27,6 +27,7 @@ import DocsPage from "@/pages/docs";
 import FilesPage from "@/pages/files";
 import LoginPage from "@/pages/login";
 import Integrations from "@/pages/integrations";
+import KanbanPage from "@/pages/kanban";
 
 function Router() {
   return (
@@ -45,6 +46,7 @@ function Router() {
       <Route path="/usage" component={UsagePage} />
       <Route path="/docs" component={DocsPage} />
       <Route path="/files" component={FilesPage} />
+      <Route path="/kanban" component={KanbanPage} />
       <Route path="/activity" component={Activity} />
       <Route path="/integrations" component={Integrations} />
       <Route path="/settings" component={Settings} />

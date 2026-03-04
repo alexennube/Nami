@@ -321,5 +321,31 @@ export type DocPage = z.infer<typeof docPageSchema>;
 export const insertDocPageSchema = docPageSchema.omit({ createdAt: true, updatedAt: true });
 export type InsertDocPage = z.infer<typeof insertDocPageSchema>;
 
+export const kanbanColumnSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  order: z.number(),
+});
+export type KanbanColumn = z.infer<typeof kanbanColumnSchema>;
+
+export const kanbanCardSchema = z.object({
+  id: z.string(),
+  columnId: z.string(),
+  title: z.string(),
+  description: z.string().optional(),
+  order: z.number(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
+  labels: z.array(z.string()).optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type KanbanCard = z.infer<typeof kanbanCardSchema>;
+
+export const kanbanBoardSchema = z.object({
+  columns: z.array(kanbanColumnSchema),
+  cards: z.array(kanbanCardSchema),
+});
+export type KanbanBoard = z.infer<typeof kanbanBoardSchema>;
+
 export type User = { id: string; username: string; password: string };
 export type InsertUser = { username: string; password: string };

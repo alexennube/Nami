@@ -10,7 +10,7 @@ import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCode
 import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
-import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount, dbSaveWorkspaceFile, dbDeleteWorkspaceFile } from "./db-persist";
+import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount, dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanColumns, dbGetKanbanCards, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbUpsertKanbanCard, dbDeleteKanbanCard, dbSaveKanbanBoard } from "./db-persist";
 import crypto from "crypto";
 import { engineMind } from "./engine-mind";
 
@@ -1124,6 +1124,152 @@ export async function registerRoutes(
     }
     const result = await deleteFromX(tweetId);
     res.json(result);
+  });
+
+  app.get("/api/kanban", async (_req, res) => {
+    try {
+      const columns = await dbGetKanbanColumns();
+      const cards = await dbGetKanbanCards();
+      if (columns.length === 0) {
+        const defaultColumns = [
+          { id: crypto.randomUUID(), title: "To Do", order: 0 },
+          { id: crypto.randomUUID(), title: "In Progress", order: 1 },
+          { id: crypto.randomUUID(), title: "Done", order: 2 },
+        ];
+        for (const col of defaultColumns) await dbUpsertKanbanColumn(col);
+        res.json({ columns: defaultColumns, cards: [] });
+      } else {
+        res.json({ columns, cards });
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/kanban/columns", async (req, res) => {
+    try {
+      const { title } = req.body;
+      if (!title) return res.status(400).json({ error: "title required" });
+      const columns = await dbGetKanbanColumns();
+      const col = { id: crypto.randomUUID(), title, order: columns.length };
+      await dbUpsertKanbanColumn(col);
+      res.json(col);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/kanban/columns/:id", async (req, res) => {
+    try {
+      const columns = await dbGetKanbanColumns();
+      const col = columns.find(c => c.id === req.params.id);
+      if (!col) return res.status(404).json({ error: "Column not found" });
+      const updated = { ...col, ...req.body, id: req.params.id };
+      await dbUpsertKanbanColumn(updated);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/kanban/columns/:id", async (req, res) => {
+    try {
+      await dbDeleteKanbanColumn(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/kanban/cards", async (req, res) => {
+    try {
+      const { columnId, title, description, priority, labels } = req.body;
+      if (!columnId || !title) return res.status(400).json({ error: "columnId and title required" });
+      const cards = await dbGetKanbanCards();
+      const colCards = cards.filter(c => c.columnId === columnId);
+      const now = new Date().toISOString();
+      const card = {
+        id: crypto.randomUUID(),
+        columnId,
+        title,
+        description: description || "",
+        order: colCards.length,
+        priority: priority || "medium",
+        labels: labels || [],
+        createdAt: now,
+        updatedAt: now,
+      };
+      await dbUpsertKanbanCard(card);
+      res.json(card);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.patch("/api/kanban/cards/:id", async (req, res) => {
+    try {
+      const cards = await dbGetKanbanCards();
+      const card = cards.find(c => c.id === req.params.id);
+      if (!card) return res.status(404).json({ error: "Card not found" });
+      const updated = { ...card, ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
+      await dbUpsertKanbanCard(updated);
+      res.json(updated);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/kanban/cards/:id", async (req, res) => {
+    try {
+      await dbDeleteKanbanCard(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/kanban/cards/:id/move", async (req, res) => {
+    try {
+      const { columnId, order } = req.body;
+      if (!columnId || order === undefined) return res.status(400).json({ error: "columnId and order required" });
+      const cards = await dbGetKanbanCards();
+      const card = cards.find(c => c.id === req.params.id);
+      if (!card) return res.status(404).json({ error: "Card not found" });
+      const targetCards = cards.filter(c => c.columnId === columnId && c.id !== req.params.id).sort((a, b) => a.order - b.order);
+      targetCards.splice(order, 0, { ...card, columnId, updatedAt: new Date().toISOString() });
+      for (let i = 0; i < targetCards.length; i++) {
+        targetCards[i].order = i;
+        await dbUpsertKanbanCard(targetCards[i]);
+      }
+      if (card.columnId !== columnId) {
+        const oldCards = cards.filter(c => c.columnId === card.columnId && c.id !== req.params.id).sort((a, b) => a.order - b.order);
+        for (let i = 0; i < oldCards.length; i++) {
+          oldCards[i].order = i;
+          await dbUpsertKanbanCard(oldCards[i]);
+        }
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/kanban/columns/reorder", async (req, res) => {
+    try {
+      const { columnIds } = req.body;
+      if (!columnIds || !Array.isArray(columnIds)) return res.status(400).json({ error: "columnIds array required" });
+      const columns = await dbGetKanbanColumns();
+      for (let i = 0; i < columnIds.length; i++) {
+        const col = columns.find(c => c.id === columnIds[i]);
+        if (col) {
+          col.order = i;
+          await dbUpsertKanbanColumn(col);
+        }
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   return httpServer;

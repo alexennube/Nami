@@ -100,6 +100,22 @@ async function ensureTables(): Promise<void> {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_kanban_columns (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_kanban_cards (
+      id TEXT PRIMARY KEY,
+      column_id TEXT NOT NULL,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS nami_google_accounts (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
@@ -317,6 +333,59 @@ export async function dbGetAllWorkspaceFiles(): Promise<{ path: string; content:
   await init();
   const result = await pool.query("SELECT path, content FROM nami_workspace_files ORDER BY updated_at DESC");
   return result.rows;
+}
+
+export async function dbGetKanbanColumns(): Promise<any[]> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_kanban_columns ORDER BY (data->>'order')::int ASC");
+  return result.rows.map(r => r.data);
+}
+
+export async function dbUpsertKanbanColumn(col: any): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_kanban_columns (id, data, created_at) VALUES ($1, $2::jsonb, NOW())
+     ON CONFLICT (id) DO UPDATE SET data = $2::jsonb`,
+    [col.id, JSON.stringify(col)]
+  );
+}
+
+export async function dbDeleteKanbanColumn(id: string): Promise<void> {
+  await init();
+  await pool.query("DELETE FROM nami_kanban_columns WHERE id = $1", [id]);
+  await pool.query("DELETE FROM nami_kanban_cards WHERE column_id = $1", [id]);
+}
+
+export async function dbGetKanbanCards(): Promise<any[]> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_kanban_cards ORDER BY (data->>'order')::int ASC");
+  return result.rows.map(r => r.data);
+}
+
+export async function dbUpsertKanbanCard(card: any): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_kanban_cards (id, column_id, data, created_at, updated_at) VALUES ($1, $2, $3::jsonb, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET column_id = $2, data = $3::jsonb, updated_at = NOW()`,
+    [card.id, card.columnId, JSON.stringify(card)]
+  );
+}
+
+export async function dbDeleteKanbanCard(id: string): Promise<void> {
+  await init();
+  await pool.query("DELETE FROM nami_kanban_cards WHERE id = $1", [id]);
+}
+
+export async function dbSaveKanbanBoard(columns: any[], cards: any[]): Promise<void> {
+  await init();
+  await pool.query("DELETE FROM nami_kanban_columns");
+  await pool.query("DELETE FROM nami_kanban_cards");
+  for (const col of columns) {
+    await dbUpsertKanbanColumn(col);
+  }
+  for (const card of cards) {
+    await dbUpsertKanbanCard(card);
+  }
 }
 
 export { pool, init as dbInit };
