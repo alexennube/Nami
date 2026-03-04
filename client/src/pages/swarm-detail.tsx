@@ -48,7 +48,7 @@ function MessageBubble({ msg }: { msg: SwarmMessage }) {
       <div className={`flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-1 ${isQueen ? "bg-purple-500/20" : isSpawn ? "bg-blue-500/20" : "bg-muted/30"}`}>
         <Icon className={`w-3.5 h-3.5 ${config.color}`} />
       </div>
-      <div className="flex flex-col gap-0.5 min-w-0 max-w-[85%]">
+      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className={`text-[11px] font-medium ${config.color}`}>{msg.agentName}</span>
           <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4">
@@ -58,12 +58,12 @@ function MessageBubble({ msg }: { msg: SwarmMessage }) {
             {new Date(msg.timestamp).toLocaleTimeString()}
           </span>
         </div>
-        <div className={`rounded-lg px-3 py-2 text-xs leading-relaxed break-words ${
+        <div className={`rounded-lg px-3 py-2 text-xs leading-relaxed break-words overflow-hidden ${
           isQueen ? "bg-purple-500/10 border border-purple-500/20" :
           isSpawn && msg.type === "spawn_created" ? "bg-amber-500/10 border border-amber-500/20" :
           "bg-blue-500/10 border border-blue-500/20"
         }`}>
-          <div className="prose prose-xs prose-invert max-w-none">
+          <div className="prose prose-xs prose-invert max-w-none [overflow-wrap:anywhere]">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -135,7 +135,7 @@ export default function SwarmDetail() {
 
   if (swarmLoading) {
     return (
-      <div className="flex flex-col h-full p-6 max-w-4xl mx-auto gap-4">
+      <div className="flex flex-col h-full p-6 gap-4">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-32 w-full" />
         <Skeleton className="h-[400px] w-full" />
@@ -158,7 +158,7 @@ export default function SwarmDetail() {
   }
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto">
+    <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 md:gap-3 p-3 md:p-4 border-b shrink-0">
         <Link href="/swarms">
           <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-back">
