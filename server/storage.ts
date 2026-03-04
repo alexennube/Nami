@@ -411,6 +411,32 @@ export class MemStorage implements IStorage {
     } catch (err: any) {
       console.log(`[storage] DB settings load skipped: ${err.message}`);
     }
+
+    setInterval(() => this.flushToDb(), 2 * 60 * 1000);
+  }
+
+  private async flushToDb(): Promise<void> {
+    try {
+      let flushedSwarms = 0;
+      let flushedAgents = 0;
+      for (const swarm of this.swarms.values()) {
+        try {
+          await dbUpsertRow("nami_swarms", swarm.id, swarm);
+          flushedSwarms++;
+        } catch {}
+      }
+      for (const agent of this.agents.values()) {
+        try {
+          await dbUpsertRow("nami_agents", agent.id, agent);
+          flushedAgents++;
+        } catch {}
+      }
+      if (flushedSwarms > 0 || flushedAgents > 0) {
+        console.log(`[storage] DB flush: ${flushedSwarms} swarms, ${flushedAgents} agents synced`);
+      }
+    } catch (e: any) {
+      console.error(`[storage] DB flush error: ${e.message}`);
+    }
   }
 
   async getAgents(): Promise<Agent[]> {
@@ -427,7 +453,7 @@ export class MemStorage implements IStorage {
     const agent: Agent = { ...data, id, createdAt: now, lastActiveAt: now, tokensUsed: 0, messagesProcessed: 0 };
     this.agents.set(id, agent);
     this.persistAgents();
-    dbUpsertRow("nami_agents", agent.id, agent).catch((e) => console.log(`[storage] DB agent insert error: ${e.message}`));
+    dbUpsertRow("nami_agents", agent.id, agent).catch((e) => console.error(`[storage] DB agent insert FAILED for ${agent.id}: ${e.message}`));
     return agent;
   }
 
@@ -437,7 +463,7 @@ export class MemStorage implements IStorage {
     const updated = { ...agent, ...updates, lastActiveAt: new Date().toISOString() };
     this.agents.set(id, updated);
     this.persistAgents();
-    dbUpsertRow("nami_agents", updated.id, updated).catch((e) => console.log(`[storage] DB agent update error: ${e.message}`));
+    dbUpsertRow("nami_agents", updated.id, updated).catch((e) => console.error(`[storage] DB agent update FAILED for ${updated.id}: ${e.message}`));
     return updated;
   }
 
@@ -502,7 +528,11 @@ export class MemStorage implements IStorage {
     };
     this.swarms.set(id, swarm);
     this.persistSwarms();
-    dbUpsertRow("nami_swarms", swarm.id, swarm).catch((e) => console.log(`[storage] DB swarm insert error: ${e.message}`));
+    try {
+      await dbUpsertRow("nami_swarms", swarm.id, swarm);
+    } catch (e: any) {
+      console.error(`[storage] DB swarm insert FAILED for ${swarm.id}: ${e.message}`);
+    }
     return swarm;
   }
 
@@ -512,7 +542,11 @@ export class MemStorage implements IStorage {
     const updated = { ...swarm, ...updates };
     this.swarms.set(id, updated);
     this.persistSwarms();
-    dbUpsertRow("nami_swarms", updated.id, updated).catch((e) => console.log(`[storage] DB swarm update error: ${e.message}`));
+    try {
+      await dbUpsertRow("nami_swarms", updated.id, updated);
+    } catch (e: any) {
+      console.error(`[storage] DB swarm update FAILED for ${updated.id}: ${e.message}`);
+    }
     return updated;
   }
 
@@ -676,7 +710,7 @@ export class MemStorage implements IStorage {
       dbUpsertRow("nami_chat_sessions", session.id, session).catch(() => {});
     }
     this.persistChat();
-    dbInsertRow("nami_chat_messages", msg.id, msg, { session_id: sessionId }).catch((e) => console.log(`[storage] DB chat message insert error: ${e.message}`));
+    dbInsertRow("nami_chat_messages", msg.id, msg, { session_id: sessionId }).catch((e) => console.error(`[storage] DB chat message insert FAILED: ${e.message}`));
     return msg;
   }
 
@@ -799,7 +833,11 @@ export class MemStorage implements IStorage {
     this.swarmMessages.push(msg);
     if (this.swarmMessages.length > 5000) this.swarmMessages = this.swarmMessages.slice(-5000);
     this.persistSwarmMessages();
-    dbInsertRow("nami_swarm_messages", msg.id, msg, { swarm_id: msg.swarmId }).catch((e) => console.log(`[storage] DB swarm message insert error: ${e.message}`));
+    try {
+      await dbInsertRow("nami_swarm_messages", msg.id, msg, { swarm_id: msg.swarmId });
+    } catch (e: any) {
+      console.error(`[storage] DB swarm message insert FAILED for ${msg.id}: ${e.message}`);
+    }
     return msg;
   }
 
