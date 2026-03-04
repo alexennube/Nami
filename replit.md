@@ -37,10 +37,11 @@ Nami employs a hierarchical agent structure: `Nami` (main orchestrator), `Spawn`
 - **Swarm Detail Pages:** Provide a group-chat-style activity feed for monitoring swarm progress, including queen thinking, spawn actions, and errors.
 - **File Viewer:** Allows browsing, viewing, and deleting files within the workspace.
 - **Namiextend Browser Extension:** Password-protected WebSocket endpoint at `/ws/namiextend` for connecting a Chrome extension. Extension authenticates by sending `{ type: "auth", token: "<password>" }`. The `browser_control` tool lets AI agents click, type, scroll, navigate, and read page content in the user's browser. Actions are logged to Postgres (`nami_browser_logs` table). Connection password is managed in Settings UI.
+- **Integrations Page:** Dedicated `/integrations` page for managing external service accounts. Currently supports multiple Google accounts with add/remove/set-default/test operations. The default Google account's refresh token is used for Gemini API inference and gogCLI. Accounts are stored in `nami_google_accounts` Postgres table with email, refresh_token, display_name, avatar_url, and is_default flag. Google auth section moved from Settings to Integrations; Settings retains a status indicator with link to Integrations.
 
 ## External Dependencies
 - **OpenRouter.ai:** For multi-model AI inference via BYOK.
-- **Google Gemini API:** For AI inference, utilizing OAuth2 for authentication. The same OAuth flow also provisions gogCLI for Google Workspace access (Gmail, Calendar, Drive, etc.).
+- **Google Gemini API:** For AI inference, utilizing OAuth2 for authentication. Supports multiple Google accounts via the Integrations page. The default account's refresh token is used for API access and also provisions gogCLI for Google Workspace access (Gmail, Calendar, Drive, etc.).
 - **PostgreSQL:** For persisting critical configuration and settings.
 - **Chromium:** Headless browser used by the `web_browse` tool.
 - **gogCLI:** Google Workspace Command Line Interface (v0.11.0) for `google_workspace` tool.

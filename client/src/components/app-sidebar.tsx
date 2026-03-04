@@ -25,6 +25,7 @@ import {
   Network,
   Wrench,
   Settings,
+  Plug,
   Pause,
   Square,
   Play,
@@ -293,6 +294,14 @@ export function AppSidebar() {
                   <Link href="/usage" data-testid="link-usage">
                     <DollarSign className="w-4 h-4" />
                     <span>Usage</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/integrations"} className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
+                  <Link href="/integrations" data-testid="link-integrations">
+                    <Plug className="w-4 h-4" />
+                    <span>Integrations</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { storage } from "./storage";
 import { log } from "./index";
-import { dbGet, dbSet } from "./db-persist";
+import { dbGet, dbSet, getDefaultGoogleAccount, getGoogleAccounts, upsertGoogleAccount } from "./db-persist";
 import fs from "fs";
 import path from "path";
 
@@ -54,6 +54,14 @@ function getRefreshTokenSync(): string | undefined {
 }
 
 async function getRefreshToken(): Promise<string | undefined> {
+  try {
+    const defaultAccount = await getDefaultGoogleAccount();
+    if (defaultAccount && isValidRefreshToken(defaultAccount.refresh_token)) {
+      process.env.GOOGLE_REFRESH_TOKEN = defaultAccount.refresh_token;
+      return defaultAccount.refresh_token;
+    }
+  } catch {}
+
   const syncToken = getRefreshTokenSync();
   if (syncToken) return syncToken;
 
@@ -61,7 +69,7 @@ async function getRefreshToken(): Promise<string | undefined> {
     const dbToken = await dbGet<string>("google_refresh_token");
     if (isValidRefreshToken(dbToken ?? undefined)) {
       process.env.GOOGLE_REFRESH_TOKEN = dbToken!;
-      log("Loaded Google refresh token from database", "gemini");
+      log("Loaded Google refresh token from database (legacy)", "gemini");
       return dbToken!;
     }
   } catch {}
@@ -276,15 +284,51 @@ export async function fetchGeminiModels(): Promise<GeminiModel[]> {
 
 export async function getGoogleUserEmail(accessToken: string): Promise<string | null> {
   try {
+    const info = await getGoogleUserInfo(accessToken);
+    return info?.email || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getGoogleUserInfo(accessToken: string): Promise<{ email: string; name?: string; picture?: string } | null> {
+  try {
     const res = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!res.ok) return null;
-    const data = await res.json() as { email?: string };
-    return data.email || null;
+    const data = await res.json() as { email?: string; name?: string; picture?: string };
+    if (!data.email) return null;
+    return { email: data.email, name: data.name, picture: data.picture };
   } catch {
     return null;
   }
+}
+
+export async function getAccessTokenForRefreshToken(refreshToken: string): Promise<{ access_token: string; expires_in: number }> {
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error("Google OAuth credentials not configured");
+
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+    grant_type: "refresh_token",
+  });
+
+  const res = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Failed to refresh access token: ${res.status} ${errText}`);
+  }
+
+  return await res.json() as { access_token: string; expires_in: number };
 }
 
 export async function syncGogCLI(refreshToken: string, accessToken: string): Promise<{ success: boolean; email?: string; error?: string }> {

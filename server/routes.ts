@@ -6,11 +6,12 @@ import path from "path";
 import { storage } from "./storage";
 import { eventBus, createSpawn, createSwarmWithQueen, agentAction, swarmAction, runAgentInference, chatWithNami, runSwarmSteps, startEngine, pauseEngine, stopEngine, startHeartbeat, stopHeartbeat } from "./engine";
 import { testConnection } from "./openrouter";
-import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCodeForTokens, saveRefreshToken, hasValidGeminiCredentials, syncGogCLI, getGogCLIStatus } from "./gemini";
+import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCodeForTokens, saveRefreshToken, hasValidGeminiCredentials, syncGogCLI, getGogCLIStatus, getGoogleUserInfo, getAccessTokenForRefreshToken } from "./gemini";
 import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
-import { dbGet, dbSet } from "./db-persist";
+import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount } from "./db-persist";
+import crypto from "crypto";
 import { engineMind } from "./engine-mind";
 
 export async function registerRoutes(
@@ -662,11 +663,11 @@ export async function registerRoutes(
 
     if (authError) {
       log(`Google OAuth error: ${authError}`, "gemini");
-      return res.redirect("/settings?google_auth=error&message=" + encodeURIComponent(String(authError)));
+      return res.redirect("/integrations?google_auth=error&message=" + encodeURIComponent(String(authError)));
     }
 
     if (!code || typeof code !== "string") {
-      return res.redirect("/settings?google_auth=error&message=" + encodeURIComponent("No authorization code received"));
+      return res.redirect("/integrations?google_auth=error&message=" + encodeURIComponent("No authorization code received"));
     }
 
     try {
@@ -675,11 +676,28 @@ export async function registerRoutes(
       const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
 
       const tokens = await exchangeCodeForTokens(code, redirectUri);
-      const saveResult = await saveRefreshToken(tokens.refresh_token);
-      if (!saveResult.dbOk) {
-        log("WARNING: Google refresh token NOT saved to database — auth will not persist across deployments", "gemini");
+
+      await saveRefreshToken(tokens.refresh_token);
+
+      const userInfo = await getGoogleUserInfo(tokens.access_token);
+      if (!userInfo) {
+        return res.redirect("/integrations?google_auth=error&message=" + encodeURIComponent("Could not retrieve Google account info"));
       }
-      log(`Google OAuth completed — refresh token saved (disk=${saveResult.diskOk}, db=${saveResult.dbOk})`, "gemini");
+
+      const existingAccounts = await getGoogleAccounts();
+      const isFirst = existingAccounts.length === 0;
+      const existing = existingAccounts.find(a => a.email === userInfo.email);
+
+      await upsertGoogleAccount({
+        id: existing?.id || crypto.randomUUID(),
+        email: userInfo.email,
+        refresh_token: tokens.refresh_token,
+        is_default: existing?.is_default ?? isFirst,
+        display_name: userInfo.name || null,
+        avatar_url: userInfo.picture || null,
+      });
+
+      log(`Google account added/updated: ${userInfo.email} (default=${existing?.is_default ?? isFirst})`, "gemini");
 
       syncGogCLI(tokens.refresh_token, tokens.access_token).then((result) => {
         if (result.success) {
@@ -691,10 +709,100 @@ export async function registerRoutes(
         log(`gogCLI sync error: ${err.message}`, "gemini");
       });
 
-      res.redirect("/settings?google_auth=success");
+      res.redirect("/integrations?google_auth=success");
     } catch (err: any) {
       log(`Google OAuth callback error: ${err.message}`, "gemini");
-      res.redirect("/settings?google_auth=error&message=" + encodeURIComponent(err.message));
+      res.redirect("/integrations?google_auth=error&message=" + encodeURIComponent(err.message));
+    }
+  });
+
+  app.get("/api/integrations/google/accounts", async (_req, res) => {
+    try {
+      const accounts = await getGoogleAccounts();
+      const safeAccounts = accounts.map(({ refresh_token, ...rest }) => rest);
+      res.json(safeAccounts);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/integrations/google/auth", async (req, res) => {
+    try {
+      const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+      const host = req.headers["x-forwarded-host"] || req.headers.host || req.hostname;
+      const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
+      const authUrl = getGoogleAuthUrl(redirectUri);
+      res.json({ authUrl, redirectUri });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/integrations/google/accounts/:id/default", async (req, res) => {
+    try {
+      const success = await setDefaultGoogleAccount(req.params.id);
+      if (!success) {
+        return res.status(404).json({ message: "Account not found" });
+      }
+      log(`Default Google account changed to: ${req.params.id}`, "gemini");
+
+      const account = (await getGoogleAccounts()).find(a => a.id === req.params.id);
+      if (account) {
+        await saveRefreshToken(account.refresh_token);
+        getAccessTokenForRefreshToken(account.refresh_token).then(tokenData => {
+          syncGogCLI(account.refresh_token, tokenData.access_token).then(result => {
+            if (result.success) log(`gogCLI re-synced with new default: ${result.email}`, "gemini");
+          });
+        }).catch(err => log(`gogCLI re-sync skipped: ${err.message}`, "gemini"));
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.delete("/api/integrations/google/accounts/:id", async (req, res) => {
+    try {
+      const accounts = await getGoogleAccounts();
+      const account = accounts.find(a => a.id === req.params.id);
+      if (!account) {
+        return res.status(404).json({ message: "Account not found" });
+      }
+      if (account.is_default && accounts.length > 1) {
+        return res.status(400).json({ message: "Cannot delete the default account. Set another account as default first." });
+      }
+      await deleteGoogleAccount(req.params.id);
+      log(`Google account removed: ${account.email}`, "gemini");
+
+      const remaining = await getGoogleAccounts();
+      if (remaining.length === 0) {
+        process.env.GOOGLE_REFRESH_TOKEN = "";
+        await dbSet("google_refresh_token", "");
+        log("All Google accounts removed — cleared legacy token", "gemini");
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/integrations/google/accounts/:id/test", async (req, res) => {
+    try {
+      const accounts = await getGoogleAccounts();
+      const account = accounts.find(a => a.id === req.params.id);
+      if (!account) {
+        return res.status(404).json({ message: "Account not found" });
+      }
+      const tokenData = await getAccessTokenForRefreshToken(account.refresh_token);
+      const userInfo = await getGoogleUserInfo(tokenData.access_token);
+      res.json({
+        success: true,
+        message: `Connection OK — authenticated as ${userInfo?.email || account.email}`,
+      });
+    } catch (error: any) {
+      res.json({ success: false, message: `Connection failed: ${error.message}` });
     }
   });
 

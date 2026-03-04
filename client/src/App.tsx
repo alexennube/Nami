@@ -26,6 +26,7 @@ import UsagePage from "@/pages/usage";
 import DocsPage from "@/pages/docs";
 import FilesPage from "@/pages/files";
 import LoginPage from "@/pages/login";
+import Integrations from "@/pages/integrations";
 
 function Router() {
   return (
@@ -45,6 +46,7 @@ function Router() {
       <Route path="/docs" component={DocsPage} />
       <Route path="/files" component={FilesPage} />
       <Route path="/activity" component={Activity} />
+      <Route path="/integrations" component={Integrations} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
     </Switch>

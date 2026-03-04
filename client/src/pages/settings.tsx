@@ -190,20 +190,6 @@ export default function Settings() {
   const [temperature, setTemperature] = useState(0.7);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const authResult = params.get("google_auth");
-    if (authResult === "success") {
-      toast({ title: "Google authenticated", description: "OAuth flow completed. You can now use Gemini models." });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/google/status"] });
-      window.history.replaceState({}, "", window.location.pathname);
-    } else if (authResult === "error") {
-      const message = params.get("message") || "Authentication failed";
-      toast({ title: "Google auth failed", description: message, variant: "destructive" });
-      window.history.replaceState({}, "", window.location.pathname);
-    }
-  }, []);
-
-  useEffect(() => {
     if (config) {
       setApiKey(config.openRouterApiKey || "");
       setNamiProvider(config.namiProvider || "openrouter");
@@ -263,33 +249,7 @@ export default function Settings() {
     },
   });
 
-  const testGeminiMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/config/test-gemini");
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      toast({ title: "Gemini connected", description: data.message || "Gemini API is reachable." });
-    },
-    onError: (err: Error) => {
-      toast({ title: "Gemini connection failed", description: err.message, variant: "destructive" });
-    },
-  });
 
-  const googleAuthMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/auth/google");
-      return res.json();
-    },
-    onSuccess: (data: any) => {
-      if (data.authUrl) {
-        window.open(data.authUrl, "_blank");
-      }
-    },
-    onError: (err: Error) => {
-      toast({ title: "Failed to start auth", description: err.message, variant: "destructive" });
-    },
-  });
 
   if (isLoading) {
     return (
@@ -344,12 +304,11 @@ export default function Settings() {
             </div>
           </div>
 
-          <div className="border-t pt-4 flex flex-col gap-3">
+          <div className="border-t pt-4 flex flex-col gap-2">
             <Label className="text-xs flex items-center gap-1.5">
               <Sparkles className="w-3 h-3" />
               Google Gemini (OAuth2)
             </Label>
-
             <div className="flex items-center gap-2">
               {googleAuthStatus?.authenticated ? (
                 <div className="flex items-center gap-2 text-xs text-emerald-400">
@@ -359,68 +318,14 @@ export default function Settings() {
               ) : (
                 <div className="flex items-center gap-2 text-xs text-amber-400">
                   <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>Not authenticated{googleAuthStatus?.missing?.length ? `: ${googleAuthStatus.missing.join(", ")}` : ""}</span>
+                  <span>Not authenticated</span>
                 </div>
               )}
-              {googleAuthStatus?.gogCLI?.authenticated ? (
-                <div className="flex items-center gap-2 text-xs text-emerald-400" data-testid="status-gogcli-connected">
-                  <CheckCircle className="w-3.5 h-3.5" />
-                  <span>Google Workspace: {googleAuthStatus.gogCLI.accounts?.join(", ") || "Connected"}</span>
-                </div>
-              ) : googleAuthStatus?.authenticated ? (
-                <div className="flex items-center gap-2 text-xs text-amber-400" data-testid="status-gogcli-disconnected">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                  <span>Google Workspace: Not connected (re-authenticate to enable)</span>
-                </div>
-              ) : null}
             </div>
-
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => googleAuthMutation.mutate()}
-                disabled={googleAuthMutation.isPending}
-                className="text-xs"
-                data-testid="button-google-auth"
-              >
-                {googleAuthMutation.isPending ? (
-                  <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Opening...</>
-                ) : (
-                  <><ExternalLink className="w-3 h-3 mr-1.5" /> Authenticate with Google</>
-                )}
-              </Button>
-              {googleAuthStatus?.authenticated && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => testGeminiMutation.mutate()}
-                  disabled={testGeminiMutation.isPending}
-                  className="text-xs"
-                  data-testid="button-test-gemini"
-                >
-                  {testGeminiMutation.isPending ? (
-                    <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> Testing...</>
-                  ) : (
-                    "Test Gemini"
-                  )}
-                </Button>
-              )}
-            </div>
-
-            <div className="text-[10px] text-muted-foreground space-y-1">
-              <p>Uses Google OAuth2 with your Client ID and Client Secret. Click "Authenticate with Google" to sign in and grant access to Gemini API and Google Workspace (Gmail, Calendar, Drive, etc.).</p>
-              <p>
-                Add this callback URL to your{" "}
-                <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-primary underline">
-                  Google Cloud Console
-                </a>{" "}
-                authorized redirect URIs:
-              </p>
-              <code className="block bg-muted/50 px-2 py-1 rounded text-[10px] font-mono break-all">
-                {window.location.origin}/api/auth/google/callback
-              </code>
-            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Google accounts are managed on the{" "}
+              <a href="/integrations" className="text-primary underline" data-testid="link-integrations-from-settings">Integrations page</a>.
+            </p>
           </div>
         </CardContent>
       </Card>

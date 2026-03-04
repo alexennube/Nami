@@ -91,6 +91,18 @@ async function ensureTables(): Promise<void> {
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_google_accounts (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      refresh_token TEXT NOT NULL,
+      is_default BOOLEAN DEFAULT false,
+      display_name TEXT,
+      avatar_url TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
 }
 
 let initialized = false;
@@ -204,6 +216,72 @@ export async function dbGetRowCount(table: string): Promise<number> {
   await init();
   const res = await pool.query(`SELECT COUNT(*) as count FROM ${table}`);
   return parseInt(res.rows[0].count, 10);
+}
+
+export interface GoogleAccount {
+  id: string;
+  email: string;
+  refresh_token: string;
+  is_default: boolean;
+  display_name: string | null;
+  avatar_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function getGoogleAccounts(): Promise<GoogleAccount[]> {
+  await init();
+  const res = await pool.query("SELECT * FROM nami_google_accounts ORDER BY created_at ASC");
+  return res.rows;
+}
+
+export async function getDefaultGoogleAccount(): Promise<GoogleAccount | null> {
+  await init();
+  const res = await pool.query("SELECT * FROM nami_google_accounts WHERE is_default = true LIMIT 1");
+  return res.rows[0] || null;
+}
+
+export async function upsertGoogleAccount(account: {
+  id: string;
+  email: string;
+  refresh_token: string;
+  is_default?: boolean;
+  display_name?: string | null;
+  avatar_url?: string | null;
+}): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_google_accounts (id, email, refresh_token, is_default, display_name, avatar_url, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, NOW())
+     ON CONFLICT (email) DO UPDATE SET
+       refresh_token = EXCLUDED.refresh_token,
+       is_default = EXCLUDED.is_default,
+       display_name = EXCLUDED.display_name,
+       avatar_url = EXCLUDED.avatar_url,
+       updated_at = NOW()`,
+    [
+      account.id,
+      account.email,
+      account.refresh_token,
+      account.is_default ?? false,
+      account.display_name ?? null,
+      account.avatar_url ?? null,
+    ]
+  );
+}
+
+export async function deleteGoogleAccount(id: string): Promise<void> {
+  await init();
+  await pool.query("DELETE FROM nami_google_accounts WHERE id = $1", [id]);
+}
+
+export async function setDefaultGoogleAccount(id: string): Promise<boolean> {
+  await init();
+  const check = await pool.query("SELECT id FROM nami_google_accounts WHERE id = $1", [id]);
+  if (check.rows.length === 0) return false;
+  await pool.query("UPDATE nami_google_accounts SET is_default = false, updated_at = NOW()");
+  await pool.query("UPDATE nami_google_accounts SET is_default = true, updated_at = NOW() WHERE id = $1", [id]);
+  return true;
 }
 
 export { pool, init as dbInit };
