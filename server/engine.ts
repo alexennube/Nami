@@ -963,6 +963,9 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
   const rawMaxCycles = maxCycles ?? swarm.maxCycles ?? QUEEN_MAX_CYCLES;
   const isUnlimited = rawMaxCycles === 0;
   const effectiveMaxCycles = isUnlimited ? Infinity : rawMaxCycles;
+  let idleCycles = 0;
+  const IDLE_NUDGE_THRESHOLD = 3;
+  const IDLE_FORCE_COMPLETE_THRESHOLD = 5;
   for (let cycle = 0; cycle < effectiveMaxCycles; cycle++) {
     const currentSwarm = await storage.getSwarm(swarmId);
     if (!currentSwarm || currentSwarm.status !== "active") {
@@ -994,6 +997,10 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
       for (const m of recentMessages.slice(-5)) {
         cycleContext += `[${m.role}/${m.fromAgentId?.substring(0, 8) || "?"}] ${m.content.substring(0, 150)}\n`;
       }
+    }
+
+    if (cycle > 0 && spawns.length === 0) {
+      cycleContext += `\n⚠ REMINDER: You have 0 spawns. To create a spawn, you MUST use this exact format:\n\`\`\`spawn\n{"name": "spawn-name", "task": "detailed task description"}\n\`\`\`\nDo NOT describe creating spawns in natural language. Use the code block above.\n`;
     }
 
     conversationHistory.push({ role: "user", content: cycleContext });
@@ -1034,10 +1041,12 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
         type: "queen_thinking",
       });
 
-      const spawnBlocks = content.match(/```spawn\n([\s\S]*?)```/g) || [];
+      let cycleHadAction = !!(queenResult.toolCalls && queenResult.toolCalls.length > 0);
+
+      const spawnBlocks = content.match(/```spawn\s*([\s\S]*?)```/g) || [];
       for (const block of spawnBlocks) {
         try {
-          const json = block.replace(/```spawn\n?/, "").replace(/```/, "").trim();
+          const json = block.replace(/```spawn\s*/, "").replace(/```/, "").trim();
           const parsed = JSON.parse(json);
           const spawnName = parsed.name || `Spawn-${Date.now()}`;
           const spawnTask = parsed.task || "Complete assigned work";
@@ -1086,6 +1095,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
           });
 
           log(`SwarmQueen spawned ${spawnName} and got result (${spawnResult.length} chars)`, "engine");
+          cycleHadAction = true;
 
           await eventBus.emit("system", {
             message: `SwarmQueen: Spawn "${spawnName}" completed task`,
@@ -1097,10 +1107,10 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
         }
       }
 
-      const assignBlocks = content.match(/```assign\n([\s\S]*?)```/g) || [];
+      const assignBlocks = content.match(/```assign\s*([\s\S]*?)```/g) || [];
       for (const block of assignBlocks) {
         try {
-          const json = block.replace(/```assign\n?/, "").replace(/```/, "").trim();
+          const json = block.replace(/```assign\s*/, "").replace(/```/, "").trim();
           const parsed = JSON.parse(json);
           if (parsed.spawn_id && parsed.task) {
             const result = await runAgentInference(parsed.spawn_id, parsed.task);
@@ -1108,16 +1118,17 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
               role: "user",
               content: `[SPAWN RESULT: ${parsed.spawn_id.substring(0, 8)}]\n${result.substring(0, 2000)}`,
             });
+            cycleHadAction = true;
           }
         } catch (parseErr: any) {
           log(`SwarmQueen assign parse error: ${parseErr.message}`, "engine");
         }
       }
 
-      const reviewBlocks = content.match(/```review\n([\s\S]*?)```/g) || [];
+      const reviewBlocks = content.match(/```review\s*([\s\S]*?)```/g) || [];
       for (const block of reviewBlocks) {
         try {
-          const json = block.replace(/```review\n?/, "").replace(/```/, "").trim();
+          const json = block.replace(/```review\s*/, "").replace(/```/, "").trim();
           const parsed = JSON.parse(json);
           const verdict = parsed.verdict || "approve";
           const feedback = parsed.feedback || "";
@@ -1156,13 +1167,14 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
             }, "swarm_queen");
           }
 
+          if (reviewSpawnId) cycleHadAction = true;
           log(`SwarmQueen review: ${verdict} for spawn ${reviewSpawnId?.substring(0, 8)}`, "engine");
         } catch (parseErr: any) {
           log(`SwarmQueen review parse error: ${parseErr.message}`, "engine");
         }
       }
 
-      const completeMatch = content.match(/```complete\n([\s\S]*?)```/);
+      const completeMatch = content.match(/```complete\s*([\s\S]*?)```/);
       if (completeMatch) {
         try {
           const parsed = JSON.parse(completeMatch[1].trim());
@@ -1200,6 +1212,52 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
           return;
         } catch (parseErr: any) {
           log(`SwarmQueen complete parse error: ${parseErr.message}`, "engine");
+        }
+      }
+
+      if (cycleHadAction) {
+        idleCycles = 0;
+      } else {
+        idleCycles++;
+        log(`SwarmQueen idle cycle ${idleCycles} for swarm ${swarm.name}`, "engine");
+
+        const mentionsSpawn = /\bspawn\b|create\s+(a\s+)?spawn\b|creating\s+(a\s+)?spawn\b/i.test(content);
+        if (mentionsSpawn && spawnBlocks.length === 0) {
+          conversationHistory.push({
+            role: "user",
+            content: `⚠ SYSTEM: You mentioned creating a spawn but did not use the required format. You MUST use this exact code block to create spawns:\n\n\`\`\`spawn\n{"name": "spawn-name", "task": "detailed task description"}\n\`\`\`\n\nDo NOT describe spawns in natural language. Output the code block above with your spawn details.`,
+          });
+        }
+
+        if (idleCycles >= IDLE_FORCE_COMPLETE_THRESHOLD) {
+          log(`SwarmQueen force-completing swarm ${swarm.name} after ${idleCycles} idle cycles`, "engine");
+          await storage.updateAgent(queen.id, { status: "completed" });
+          await storage.addSwarmMessage({
+            swarmId,
+            agentId: queen.id,
+            agentName: queen.name,
+            content: `Auto-completed: Queen was idle for ${idleCycles} consecutive cycles without taking any structured action (spawn/assign/review/complete).`,
+            type: "completion",
+          });
+          const currentSwarmForSchedule = await storage.getSwarm(swarmId);
+          if (currentSwarmForSchedule?.schedule?.enabled) {
+            await transitionSwarmToSleeping(swarmId);
+          } else {
+            await storage.updateSwarm(swarmId, {
+              status: "completed",
+              progress: 100,
+              completedAt: new Date().toISOString(),
+            });
+            await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary: `Auto-completed after ${idleCycles} idle cycles` }, "swarm_queen");
+          }
+          return;
+        }
+
+        if (idleCycles >= IDLE_NUDGE_THRESHOLD) {
+          conversationHistory.push({
+            role: "user",
+            content: `⚠ SYSTEM WARNING: You have been idle for ${idleCycles} consecutive cycles without taking any structured action. You MUST do one of the following NOW:\n1. Create a spawn: \`\`\`spawn\n{"name": "...", "task": "..."}\n\`\`\`\n2. Assign work: \`\`\`assign\n{"spawn_id": "...", "task": "..."}\n\`\`\`\n3. Review work: \`\`\`review\n{"spawn_id": "...", "verdict": "approve", "feedback": "..."}\n\`\`\`\n4. Mark complete: \`\`\`complete\n{"summary": "...", "status": "success"}\n\`\`\`\n\nIf you have finished the objective, use the complete block. If not, create spawns to do the work. You will be auto-completed in ${IDLE_FORCE_COMPLETE_THRESHOLD - idleCycles} more idle cycles.`,
+          });
         }
       }
 

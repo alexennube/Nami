@@ -34,8 +34,9 @@ Nami employs a hierarchical agent structure: `Nami` (main orchestrator), `Spawn`
 - **Self-Editing Capability:** Agents can modify their own codebase using tools like `file_edit`, `file_search`, and `server_restart`.
 - **Scheduled Swarms:** Workflows can be scheduled with interval, daily, or weekly triggers.
 - **Usage Tracking:** Monitors token usage, costs, and model performance per call.
+- **Swarm Queen Loop:** Queens communicate via structured code blocks (`spawn`, `assign`, `review`, `complete`). Includes idle cycle detection (nudge at 3 idle cycles, force-complete at 5) to prevent infinite loops. Tool call activity also counts as non-idle. Format reminders are injected when the queen mentions spawns without using the required block syntax.
 - **Swarm Detail Pages:** Provide a group-chat-style activity feed for monitoring swarm progress, including queen thinking, spawn actions, and errors.
-- **File Viewer:** Allows browsing, viewing, and deleting files within the workspace.
+- **File Viewer:** Allows browsing, viewing, editing, and deleting files within the workspace. Supports in-place text editing via the UI with save/cancel controls.
 - **Namiextend Browser Extension:** Password-protected WebSocket endpoint at `/ws/namiextend` for connecting a Chrome extension. Extension authenticates by sending `{ type: "auth", token: "<password>" }`. The `browser_control` tool lets AI agents click, type, scroll, navigate, and read page content in the user's browser. Actions are logged to Postgres (`nami_browser_logs` table). Connection password is managed in Settings UI.
 - **Integrations Page:** Dedicated `/integrations` page for managing external service accounts. Currently supports multiple Google accounts with add/remove/set-default/test operations. The default Google account's refresh token is used for Gemini API inference and gogCLI. Accounts are stored in `nami_google_accounts` Postgres table with email, refresh_token, display_name, avatar_url, and is_default flag. Google auth section moved from Settings to Integrations; Settings retains a status indicator with link to Integrations.
 
