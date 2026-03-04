@@ -23,6 +23,7 @@ export interface ChatOptions {
   useTools?: boolean;
   maxToolRounds?: number;
   provider?: InferenceProvider;
+  excludeTools?: string[];
 }
 
 export async function getApiKey(): Promise<string> {
@@ -119,9 +120,13 @@ export async function chatCompletion(
   const useTools = options.useTools ?? false;
   const maxToolRounds = options.maxToolRounds ?? 5;
 
-  const enabledTools = getEnabledTools();
+  const excludeSet = new Set(options.excludeTools || []);
+  const enabledTools = getEnabledTools().filter(t => !excludeSet.has(t.name));
   const hasTools = useTools && enabledTools.length > 0;
-  const toolDefs = hasTools ? getToolsForLLM() : undefined;
+  const toolDefs = hasTools ? enabledTools.map((t) => ({
+    type: "function" as const,
+    function: { name: t.name, description: t.description, parameters: t.parameters },
+  })) : undefined;
 
   log(`${provider} request: model=${model}, messages=${messages.length}, tools=${hasTools ? enabledTools.length : 0}`, "openrouter");
 

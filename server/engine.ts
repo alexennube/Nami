@@ -676,7 +676,7 @@ export async function runAgentInference(agentId: string, userMessage: string): P
     ...history.map((m) => ({ role: m.role, content: m.content })),
   ];
 
-  const agentResult = await chatCompletion(messages, { model: agent.model, useTools: true, maxToolRounds: 3 });
+  const agentResult = await chatCompletion(messages, { model: agent.model, useTools: true, maxToolRounds: 3, excludeTools: ["create_swarm", "manage_swarm", "server_restart"] });
   const { content, tokensUsed } = agentResult;
   await recordUsage(agentResult, "agent", agent.swarmId, agentId);
 
@@ -999,6 +999,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
         useTools: true,
         maxToolRounds: 3,
         provider: config.engineProvider || "openrouter",
+        excludeTools: ["create_swarm", "manage_swarm", "server_restart"],
       });
       const { content, tokensUsed } = queenResult;
       await recordUsage(queenResult, "swarm", swarmId, queen.id);
