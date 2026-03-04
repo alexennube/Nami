@@ -16,8 +16,9 @@ export interface ChatMessage {
 }
 
 export type StreamEvent =
-  | { type: "tool_start"; name: string; round: number }
-  | { type: "tool_result"; name: string; round: number }
+  | { type: "tool_start"; name: string; round: number; args?: Record<string, any> }
+  | { type: "tool_result"; name: string; round: number; resultPreview?: string }
+  | { type: "thinking"; content: string; round: number }
   | { type: "text_delta"; content: string }
   | { type: "text_done"; content: string };
 
@@ -170,6 +171,10 @@ export async function chatCompletion(
       const message = choice.message;
 
       if (message.tool_calls && message.tool_calls.length > 0) {
+        if (message.content) {
+          options.onStream?.({ type: "thinking", content: message.content, round });
+        }
+
         conversationMessages.push({
           role: "assistant",
           content: message.content || null,
@@ -189,7 +194,7 @@ export async function chatCompletion(
           }
 
           log(`Tool call: ${fnName}(${JSON.stringify(fnArgs).substring(0, 80)})`, "openrouter");
-          options.onStream?.({ type: "tool_start", name: fnName, round });
+          options.onStream?.({ type: "tool_start", name: fnName, round, args: fnArgs });
 
           let result: string;
           if (engineMind.isInitialized()) {
@@ -202,7 +207,7 @@ export async function chatCompletion(
             result = await executeToolCall(fnName, fnArgs);
           }
           allToolCalls.push({ name: fnName, args: fnArgs, result: result.substring(0, 500) });
-          options.onStream?.({ type: "tool_result", name: fnName, round });
+          options.onStream?.({ type: "tool_result", name: fnName, round, resultPreview: result.substring(0, 150) });
 
           conversationMessages.push({
             role: "tool",

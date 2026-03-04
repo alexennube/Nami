@@ -791,7 +791,14 @@ export async function chatWithNami(userMessage: string, sessionId?: string): Pro
     model: config.defaultModel,
     useTools: true,
     onStream: (event) => {
-      if (event.type === "tool_start") {
+      if (event.type === "thinking") {
+        eventBus.broadcast("chat_stream", {
+          streamType: "thinking",
+          content: event.content,
+          round: event.round,
+          sessionId: chatSessionId,
+        }, "nami");
+      } else if (event.type === "tool_start") {
         streamTools.push(event.name);
         eventBus.broadcast("chat_stream", {
           streamType: "tool_start",
@@ -806,6 +813,7 @@ export async function chatWithNami(userMessage: string, sessionId?: string): Pro
           tool: event.name,
           round: event.round,
           toolsSoFar: [...streamTools],
+          resultPreview: event.resultPreview,
           sessionId: chatSessionId,
         }, "nami");
       } else if (event.type === "text_done") {

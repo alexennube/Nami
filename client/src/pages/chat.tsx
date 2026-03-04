@@ -10,7 +10,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Send, ChevronDown, ChevronUp, Heart, PanelRightClose, Clock, Zap, Moon, AlertTriangle, Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Check, Wrench, Loader2 } from "lucide-react";
+import { Send, ChevronDown, ChevronUp, Heart, PanelRightClose, Clock, Zap, Moon, AlertTriangle, Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Check, Wrench, Loader2, Brain } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { namiWs } from "@/lib/websocket";
@@ -28,6 +28,7 @@ export default function Chat() {
   const [streamStatus, setStreamStatus] = useState<{
     tools: string[];
     activeTool: string | null;
+    thinking: string | null;
     done: boolean;
   } | null>(null);
   const messageCountRef = useRef(0);
@@ -80,12 +81,20 @@ export default function Chat() {
       if (event.type !== "chat_stream") return;
       const p = event.payload as any;
       if (p.sessionId && p.sessionId !== activeSessionId) return;
-      if (p.streamType === "tool_start") {
-        setStreamStatus({
+      if (p.streamType === "thinking") {
+        setStreamStatus((prev) => ({
+          tools: prev?.tools || [],
+          activeTool: prev?.activeTool || null,
+          thinking: p.content,
+          done: false,
+        }));
+      } else if (p.streamType === "tool_start") {
+        setStreamStatus((prev) => ({
           tools: p.toolsSoFar || [],
           activeTool: p.tool,
+          thinking: prev?.thinking || null,
           done: false,
-        });
+        }));
       } else if (p.streamType === "tool_result") {
         setStreamStatus((prev) => prev ? { ...prev, activeTool: null } : null);
       } else if (p.streamType === "text_done") {
@@ -313,11 +322,11 @@ export default function Chat() {
               {(sendMutation.isPending || waitingForReply) && (
                 <div>
                   <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Nami</p>
-                  <div className="bg-card border border-border rounded-md p-4 max-w-lg">
-                    {streamStatus && streamStatus.tools.length > 0 ? (
-                      <div className="space-y-2">
+                  <div className="bg-card border border-border rounded-md p-4 max-w-full">
+                    {streamStatus && (streamStatus.tools.length > 0 || streamStatus.thinking) ? (
+                      <div className="space-y-2.5">
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                          <Loader2 className="w-3 h-3 animate-spin text-primary shrink-0" />
                           <span>
                             {streamStatus.done
                               ? "Composing response..."
@@ -326,29 +335,37 @@ export default function Chat() {
                                 : "Thinking..."}
                           </span>
                         </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {streamStatus.tools.map((tool, i) => (
-                            <span
-                              key={`${tool}-${i}`}
-                              className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-mono ${
-                                tool === streamStatus.activeTool
-                                  ? "bg-primary/20 text-primary border border-primary/30"
-                                  : "bg-muted text-muted-foreground"
-                              }`}
-                            >
-                              <Wrench className="w-2.5 h-2.5" />
-                              {tool}
-                            </span>
-                          ))}
-                        </div>
+                        {streamStatus.thinking && (
+                          <div className="bg-muted/30 border border-border/50 rounded px-3 py-2 text-xs text-muted-foreground leading-relaxed [overflow-wrap:anywhere]">
+                            <div className="flex items-center gap-1.5 mb-1 text-[10px] font-medium text-primary/70 uppercase tracking-wider">
+                              <Brain className="w-3 h-3" />
+                              Chain of Thought
+                            </div>
+                            <p className="whitespace-pre-wrap">{streamStatus.thinking.length > 500 ? streamStatus.thinking.substring(0, 500) + "..." : streamStatus.thinking}</p>
+                          </div>
+                        )}
+                        {streamStatus.tools.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5">
+                            {streamStatus.tools.map((tool, i) => (
+                              <span
+                                key={`${tool}-${i}`}
+                                className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                                  tool === streamStatus.activeTool
+                                    ? "bg-primary/20 text-primary border border-primary/30"
+                                    : "bg-muted text-muted-foreground"
+                                }`}
+                              >
+                                <Wrench className="w-2.5 h-2.5" />
+                                {tool}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <div className="flex gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
-                        </div>
+                        <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                        <span className="text-xs">Thinking...</span>
                       </div>
                     )}
                   </div>
