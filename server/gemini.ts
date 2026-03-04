@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { storage } from "./storage";
 import { log } from "./index";
+import { dbGet, dbSet } from "./db-persist";
 import fs from "fs";
 import path from "path";
 
@@ -38,7 +39,7 @@ function isValidRefreshToken(token: string | undefined): boolean {
   return !!token && token.length > 5 && token !== "NA" && token !== "na" && token !== "placeholder";
 }
 
-function getRefreshToken(): string | undefined {
+function getRefreshTokenSync(): string | undefined {
   const envToken = process.env.GOOGLE_REFRESH_TOKEN;
   if (isValidRefreshToken(envToken)) return envToken;
 
@@ -52,26 +53,56 @@ function getRefreshToken(): string | undefined {
   return undefined;
 }
 
-export function saveRefreshToken(token: string): void {
+async function getRefreshToken(): Promise<string | undefined> {
+  const syncToken = getRefreshTokenSync();
+  if (syncToken) return syncToken;
+
+  try {
+    const dbToken = await dbGet<string>("google_refresh_token");
+    if (isValidRefreshToken(dbToken ?? undefined)) {
+      process.env.GOOGLE_REFRESH_TOKEN = dbToken!;
+      log("Loaded Google refresh token from database", "gemini");
+      return dbToken!;
+    }
+  } catch {}
+
+  return undefined;
+}
+
+export async function saveRefreshToken(token: string): Promise<{ diskOk: boolean; dbOk: boolean }> {
   process.env.GOOGLE_REFRESH_TOKEN = token;
   cachedAccessToken = null;
   tokenExpiresAt = 0;
+
+  let diskOk = false;
+  let dbOk = false;
 
   try {
     const dir = path.dirname(TOKEN_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(TOKEN_FILE, JSON.stringify({ refresh_token: token, updated_at: new Date().toISOString() }));
     log("Saved Google refresh token to disk", "gemini");
+    diskOk = true;
   } catch (err: any) {
     log(`Failed to save refresh token to disk: ${err.message}`, "gemini");
   }
+
+  try {
+    await dbSet("google_refresh_token", token);
+    log("Saved Google refresh token to database", "gemini");
+    dbOk = true;
+  } catch (err: any) {
+    log(`Failed to save refresh token to database: ${err.message}`, "gemini");
+  }
+
+  return { diskOk, dbOk };
 }
 
-export function hasValidGeminiCredentials(): { valid: boolean; missing: string[] } {
+export async function hasValidGeminiCredentials(): Promise<{ valid: boolean; missing: string[] }> {
   const missing: string[] = [];
   if (!process.env.GOOGLE_CLIENT_ID) missing.push("GOOGLE_CLIENT_ID");
   if (!process.env.GOOGLE_CLIENT_SECRET) missing.push("GOOGLE_CLIENT_SECRET");
-  if (!getRefreshToken()) missing.push("GOOGLE_REFRESH_TOKEN (not authenticated)");
+  if (!(await getRefreshToken())) missing.push("GOOGLE_REFRESH_TOKEN (not authenticated)");
   return { valid: missing.length === 0, missing };
 }
 
@@ -82,7 +113,7 @@ export async function getGeminiAccessToken(): Promise<string> {
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const refreshToken = getRefreshToken();
+  const refreshToken = await getRefreshToken();
 
   if (!clientId || !clientSecret) {
     throw new Error("Google OAuth credentials not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET as environment secrets.");
@@ -346,7 +377,7 @@ export async function getGogCLIStatus(): Promise<{ authenticated: boolean; accou
 }
 
 export async function syncGogCLIOnBoot(): Promise<void> {
-  const refreshToken = getRefreshToken();
+  const refreshToken = await getRefreshToken();
   if (!refreshToken) return;
 
   try {
@@ -370,7 +401,7 @@ export async function syncGogCLIOnBoot(): Promise<void> {
 
 export async function testGeminiConnection(): Promise<{ success: boolean; message: string }> {
   try {
-    const creds = hasValidGeminiCredentials();
+    const creds = await hasValidGeminiCredentials();
     if (!creds.valid) {
       return { success: false, message: `Missing: ${creds.missing.join(", ")}` };
     }

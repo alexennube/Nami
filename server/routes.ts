@@ -640,7 +640,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/auth/google/status", async (_req, res) => {
-    const creds = hasValidGeminiCredentials();
+    const creds = await hasValidGeminiCredentials();
     const gogStatus = await getGogCLIStatus();
     res.json({ authenticated: creds.valid, missing: creds.missing, gogCLI: gogStatus });
   });
@@ -675,8 +675,11 @@ export async function registerRoutes(
       const redirectUri = `${protocol}://${host}/api/auth/google/callback`;
 
       const tokens = await exchangeCodeForTokens(code, redirectUri);
-      saveRefreshToken(tokens.refresh_token);
-      log("Google OAuth completed — refresh token saved", "gemini");
+      const saveResult = await saveRefreshToken(tokens.refresh_token);
+      if (!saveResult.dbOk) {
+        log("WARNING: Google refresh token NOT saved to database — auth will not persist across deployments", "gemini");
+      }
+      log(`Google OAuth completed — refresh token saved (disk=${saveResult.diskOk}, db=${saveResult.dbOk})`, "gemini");
 
       syncGogCLI(tokens.refresh_token, tokens.access_token).then((result) => {
         if (result.success) {
