@@ -92,6 +92,14 @@ async function ensureTables(): Promise<void> {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_workspace_files (
+      path TEXT PRIMARY KEY,
+      content TEXT NOT NULL,
+      size INTEGER DEFAULT 0,
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS nami_google_accounts (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
@@ -282,6 +290,33 @@ export async function setDefaultGoogleAccount(id: string): Promise<boolean> {
   await pool.query("UPDATE nami_google_accounts SET is_default = false, updated_at = NOW()");
   await pool.query("UPDATE nami_google_accounts SET is_default = true, updated_at = NOW() WHERE id = $1", [id]);
   return true;
+}
+
+export async function dbSaveWorkspaceFile(filePath: string, content: string): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_workspace_files (path, content, size, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (path) DO UPDATE SET content = $2, size = $3, updated_at = NOW()`,
+    [filePath, content, content.length]
+  );
+}
+
+export async function dbDeleteWorkspaceFile(filePath: string): Promise<void> {
+  await init();
+  await pool.query("DELETE FROM nami_workspace_files WHERE path = $1", [filePath]);
+}
+
+export async function dbDeleteWorkspaceFilesUnderDir(dirPath: string): Promise<void> {
+  await init();
+  const prefix = dirPath.endsWith("/") ? dirPath : dirPath + "/";
+  await pool.query("DELETE FROM nami_workspace_files WHERE path = $1 OR path LIKE $2", [dirPath, prefix + "%"]);
+}
+
+export async function dbGetAllWorkspaceFiles(): Promise<{ path: string; content: string }[]> {
+  await init();
+  const result = await pool.query("SELECT path, content FROM nami_workspace_files ORDER BY updated_at DESC");
+  return result.rows;
 }
 
 export { pool, init as dbInit };

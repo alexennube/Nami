@@ -10,7 +10,7 @@ import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCode
 import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
-import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount } from "./db-persist";
+import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount, dbSaveWorkspaceFile, dbDeleteWorkspaceFile } from "./db-persist";
 import crypto from "crypto";
 import { engineMind } from "./engine-mind";
 
@@ -1041,6 +1041,9 @@ export async function registerRoutes(
       const dir = path.dirname(resolved);
       await fs.promises.mkdir(dir, { recursive: true });
       await fs.promises.writeFile(resolved, content, "utf-8");
+      dbSaveWorkspaceFile(relative, content).catch((e: any) =>
+        console.error(`[routes] DB persist file FAILED for ${relative}: ${e.message}`)
+      );
       res.json({ success: true, path: filePath });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1061,8 +1064,15 @@ export async function registerRoutes(
       const stat = await fs.promises.stat(resolved);
       if (stat.isDirectory()) {
         await fs.promises.rm(resolved, { recursive: true });
+        const { dbDeleteWorkspaceFilesUnderDir } = await import("./db-persist");
+        dbDeleteWorkspaceFilesUnderDir(relative).catch((e: any) =>
+          console.error(`[routes] DB delete dir files FAILED for ${relative}: ${e.message}`)
+        );
       } else {
         await fs.promises.unlink(resolved);
+        dbDeleteWorkspaceFile(relative).catch((e: any) =>
+          console.error(`[routes] DB delete file FAILED for ${relative}: ${e.message}`)
+        );
       }
       res.json({ success: true });
     } catch (err: any) {

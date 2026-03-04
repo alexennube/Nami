@@ -3,6 +3,7 @@ import * as path from "path";
 import { exec, execFile } from "child_process";
 import { log } from "./index";
 import { storage } from "./storage";
+import { dbSaveWorkspaceFile, dbDeleteWorkspaceFile } from "./db-persist";
 
 type EngineFunctions = {
   createSwarmWithQueen: (data: { name: string; goal: string; objective: string; maxCycles?: number }) => Promise<any>;
@@ -215,6 +216,14 @@ const fileWriteTool: NamiTool = {
       log(`Tool file_write: wrote ${filePath} (${content.length} chars)`, "tools");
     }
 
+    const finalContent = fs.readFileSync(resolved, "utf-8");
+    const validated = resolveAndValidate(filePath);
+    if (validated) {
+      dbSaveWorkspaceFile(validated.relative, finalContent).catch((e: any) =>
+        console.error(`[tools] DB persist file FAILED for ${validated.relative}: ${e.message}`)
+      );
+    }
+
     return `Successfully ${append ? "appended to" : "wrote"} '${filePath}' (${content.length} characters).`;
   },
 };
@@ -290,6 +299,14 @@ const fileEditTool: NamiTool = {
     }
 
     fs.writeFileSync(resolved, updated, "utf-8");
+
+    const validated = resolveAndValidate(filePath);
+    if (validated) {
+      dbSaveWorkspaceFile(validated.relative, updated).catch((e: any) =>
+        console.error(`[tools] DB persist file FAILED for ${validated.relative}: ${e.message}`)
+      );
+    }
+
     const replacements = replaceAll ? occurrences : 1;
     log(`Tool file_edit: edited ${filePath} (${replacements} replacement${replacements > 1 ? "s" : ""})`, "tools");
     return `Successfully edited '${filePath}': replaced ${replacements} occurrence${replacements > 1 ? "s" : ""}. ${newText ? `Replaced ${oldText.length} chars with ${newText.length} chars.` : `Deleted ${oldText.length} chars.`}`;

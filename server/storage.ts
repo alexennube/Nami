@@ -2,7 +2,7 @@ import type { Agent, InsertAgent, Swarm, InsertSwarm, NamiEvent, NamiConfig, Sys
 import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
-import { dbGet, dbSet, dbUpsertRow, dbInsertRow, dbDeleteRow, dbDeleteWhere, dbGetAllRows, dbGetRowsByColumn, dbInit, dbUpsertByKey, dbDeleteByKey, dbTruncate } from "./db-persist";
+import { dbGet, dbSet, dbUpsertRow, dbInsertRow, dbDeleteRow, dbDeleteWhere, dbGetAllRows, dbGetRowsByColumn, dbInit, dbUpsertByKey, dbDeleteByKey, dbTruncate, dbGetAllWorkspaceFiles } from "./db-persist";
 
 const PERSIST_DIR = path.join(process.cwd(), ".nami-data");
 const CONFIG_FILE = path.join(PERSIST_DIR, "config.json");
@@ -408,11 +408,55 @@ export class MemStorage implements IStorage {
         console.log(`[storage] Migrated ${this.docs.size} docs to DB`);
       }
 
+      await this.restoreWorkspaceFiles();
+
     } catch (err: any) {
       console.log(`[storage] DB settings load skipped: ${err.message}`);
     }
 
     setInterval(() => this.flushToDb(), 2 * 60 * 1000);
+  }
+
+  private async restoreWorkspaceFiles(): Promise<void> {
+    try {
+      const files = await dbGetAllWorkspaceFiles();
+      if (files.length === 0) return;
+
+      let restored = 0;
+      let skipped = 0;
+      const WORKSPACE_ROOT = process.cwd();
+      for (const file of files) {
+        try {
+          const normalized = path.normalize(file.path);
+          const resolved = path.resolve(WORKSPACE_ROOT, normalized);
+          if (!resolved.startsWith(WORKSPACE_ROOT + path.sep) && resolved !== WORKSPACE_ROOT) continue;
+          const relative = path.relative(WORKSPACE_ROOT, resolved);
+          if (relative.startsWith("..")) continue;
+
+          if (fs.existsSync(resolved)) {
+            const existing = fs.readFileSync(resolved, "utf-8");
+            if (existing === file.content) {
+              skipped++;
+              continue;
+            }
+          }
+
+          const dir = path.dirname(resolved);
+          if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+          }
+          fs.writeFileSync(resolved, file.content, "utf-8");
+          restored++;
+        } catch (e: any) {
+          console.error(`[storage] Failed to restore file ${file.path}: ${e.message}`);
+        }
+      }
+      if (restored > 0 || skipped > 0) {
+        console.log(`[storage] Workspace files: ${restored} restored, ${skipped} unchanged (${files.length} total in DB)`);
+      }
+    } catch (e: any) {
+      console.error(`[storage] Workspace file restore error: ${e.message}`);
+    }
   }
 
   private async flushToDb(): Promise<void> {
