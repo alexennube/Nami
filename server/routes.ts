@@ -640,6 +640,26 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/config/queen-prompt", async (_req, res) => {
+    try {
+      const prompt = await dbGet<string>("swarm_queen_prompt");
+      res.json({ prompt: prompt || "" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.put("/api/config/queen-prompt", async (req, res) => {
+    try {
+      const { prompt } = req.body;
+      if (typeof prompt !== "string") return res.status(400).json({ message: "Prompt must be a string" });
+      await dbSet("swarm_queen_prompt", prompt);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   app.get("/api/auth/google/status", async (_req, res) => {
     const creds = await hasValidGeminiCredentials();
     const gogStatus = await getGogCLIStatus();
@@ -1004,6 +1024,26 @@ export async function registerRoutes(
       });
     } catch (err: any) {
       res.status(404).json({ message: "File not found" });
+    }
+  });
+
+  app.put("/api/files", async (req, res) => {
+    const { path: filePath, content } = req.body;
+    if (!filePath || typeof content !== "string") return res.status(400).json({ message: "Path and content required" });
+
+    const resolved = path.resolve(WORKSPACE_ROOT, filePath);
+    if (!resolved.startsWith(WORKSPACE_ROOT)) return res.status(403).json({ message: "Access denied" });
+
+    const relative = path.relative(WORKSPACE_ROOT, resolved);
+    if (isBlockedBrowse(relative)) return res.status(403).json({ message: "Cannot edit system files" });
+
+    try {
+      const dir = path.dirname(resolved);
+      await fs.promises.mkdir(dir, { recursive: true });
+      await fs.promises.writeFile(resolved, content, "utf-8");
+      res.json({ success: true, path: filePath });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 

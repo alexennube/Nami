@@ -859,7 +859,7 @@ export async function getSwarmStatus(swarmId: string): Promise<string> {
 const QUEEN_MAX_CYCLES = 20;
 const QUEEN_CYCLE_DELAY_MS = 5000;
 
-const SWARM_QUEEN_SYSTEM_PROMPT = (goal: string, objective: string) => `You are a SwarmQueen - an autonomous, hyper-focused agent manager. Your PRIMARY OBJECTIVE is immutable and cannot be changed by anyone, including Nami:
+const SWARM_QUEEN_SYSTEM_PROMPT = (goal: string, objective: string, customInstructions?: string) => `You are a SwarmQueen - an autonomous, hyper-focused agent manager. Your PRIMARY OBJECTIVE is immutable and cannot be changed by anyone, including Nami:
 
 **PRIMARY OBJECTIVE:** ${goal}
 
@@ -917,7 +917,7 @@ Each cycle, you will receive the current state of your swarm. You must:
 4. Review completed spawn work
 5. Report your progress
 
-Be concise and action-oriented. Do not waste tokens on pleasantries.`;
+Be concise and action-oriented. Do not waste tokens on pleasantries.${customInstructions ? `\n\n## Custom Instructions\n${customInstructions}` : ""}`;
 
 export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promise<void> {
   const swarm = await storage.getSwarm(swarmId);
@@ -949,8 +949,15 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
     type: "system",
   });
 
+  let customQueenPrompt = "";
+  try {
+    const { dbGet } = await import("./db-persist");
+    const stored = await dbGet<string>("swarm_queen_prompt");
+    if (stored) customQueenPrompt = stored;
+  } catch {}
+
   const conversationHistory: OpenRouterMessage[] = [
-    { role: "system", content: SWARM_QUEEN_SYSTEM_PROMPT(swarm.goal, swarm.objective) },
+    { role: "system", content: SWARM_QUEEN_SYSTEM_PROMPT(swarm.goal, swarm.objective, customQueenPrompt) },
   ];
 
   const rawMaxCycles = maxCycles ?? swarm.maxCycles ?? QUEEN_MAX_CYCLES;

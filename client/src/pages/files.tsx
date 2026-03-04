@@ -15,11 +15,14 @@ import {
   Copy,
   ChevronRight,
   FolderOpen,
-
+  Pencil,
+  Save,
+  X,
   Image,
   Code,
   FileJson,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
 interface FileEntry {
@@ -75,6 +78,8 @@ function formatSize(bytes: number): string {
 export default function FilesPage() {
   const [currentDir, setCurrentDir] = useState(".");
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState("");
   const { toast } = useToast();
 
   const { data: listing, isLoading: dirLoading } = useQuery<DirListing>({
@@ -94,6 +99,20 @@ export default function FilesPage() {
       queryClient.invalidateQueries({ queryKey: [`/api/files?path=${encodeURIComponent(currentDir)}`] });
       setSelectedFile(null);
       toast({ title: "Deleted", description: "File removed successfully." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async ({ filePath, content }: { filePath: string; content: string }) => {
+      await apiRequest("PUT", "/api/files", { path: filePath, content });
+    },
+    onSuccess: () => {
+      setEditing(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/files/read?path=${encodeURIComponent(selectedFile!)}`] });
+      toast({ title: "Saved", description: "File updated successfully." });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -223,7 +242,41 @@ export default function FilesPage() {
                       </Badge>
                     </>
                   )}
-                  {fileData?.content && (
+                  {fileData?.content !== undefined && !fileData?.binary && !editing && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => { setEditContent(fileData.content || ""); setEditing(true); }}
+                      data-testid="button-edit-file"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                  {editing && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-primary"
+                        onClick={() => saveMutation.mutate({ filePath: selectedFile, content: editContent })}
+                        disabled={saveMutation.isPending}
+                        data-testid="button-save-file"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => setEditing(false)}
+                        data-testid="button-cancel-edit"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </Button>
+                    </>
+                  )}
+                  {fileData?.content && !editing && (
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyContent} data-testid="button-copy-file">
                       <Copy className="w-3.5 h-3.5" />
                     </Button>
@@ -254,6 +307,14 @@ export default function FilesPage() {
                     <p className="text-sm">Binary file ({fileData.extension})</p>
                     <p className="text-xs" data-testid="text-binary-size">{formatSize(fileData.size)}</p>
                   </div>
+                ) : editing ? (
+                  <textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    className="w-full h-full p-4 text-xs font-mono leading-relaxed bg-background resize-none border-0 outline-none focus:ring-0"
+                    spellCheck={false}
+                    data-testid="textarea-file-edit"
+                  />
                 ) : fileData?.content !== undefined ? (
                   <pre className="p-4 text-xs font-mono leading-relaxed whitespace-pre-wrap break-words" data-testid="text-file-content">
                     {fileData.content}
