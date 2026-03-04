@@ -267,7 +267,7 @@ export type SystemStats = z.infer<typeof systemStatsSchema>;
 
 export const eventSchema = z.object({
   id: z.string(),
-  type: z.enum(["agent_created", "agent_status_changed", "swarm_created", "swarm_completed", "swarm_sleeping", "swarm_scheduled_start", "step_completed", "message_sent", "heartbeat", "thought", "error", "system", "chat_stream"]),
+  type: z.enum(["agent_created", "agent_status_changed", "swarm_created", "swarm_completed", "swarm_sleeping", "swarm_scheduled_start", "step_completed", "message_sent", "heartbeat", "thought", "error", "system", "chat_stream", "chat_message"]),
   payload: z.record(z.any()),
   timestamp: z.string(),
   source: z.string(),

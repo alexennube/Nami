@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { storage } from "./storage";
 import { log } from "./index";
-import { getToolsForLLM, executeToolCall, getEnabledTools } from "./tools";
+import { getToolsForLLM, executeToolCall, getEnabledTools, getToolByName } from "./tools";
 import { engineMind } from "./engine-mind";
 import { createGeminiClient } from "./gemini";
 

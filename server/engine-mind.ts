@@ -196,9 +196,15 @@ class EngineMind {
       return { result: directResult, healed: false };
     }
 
+    let result;
     try {
-      const result = await executeToolCall(toolName, args);
+      result = await executeToolCall(toolName, args);
+    } catch (err: any) {
+      log(`Engine Mind execution error on ${toolName}: ${err.message}`, "engine-mind");
+      result = `Error: ${err.message}`;
+    }
 
+    try {
       if (!result.startsWith("Error:")) {
         this.stats.totalToolExecutions++;
         return { result, healed: false };

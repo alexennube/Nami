@@ -52,6 +52,19 @@ class EventBus {
 
 export const eventBus = new EventBus();
 
+async function notifySwarmCompletion(swarmName: string, summary: string, swarmId: string) {
+  const message = `🐝 **Swarm "${swarmName}" has completed.**\n${summary}`;
+  await storage.addChatMessage({
+    role: "assistant",
+    content: message,
+    agentId: "swarm_queen",
+    agentName: "SwarmQueen",
+    tokensUsed: 0,
+    autonomous: true,
+  });
+  eventBus.broadcast("chat_message", { content: message, agentName: "SwarmQueen", swarmId }, "swarm_queen");
+}
+
 let heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
 let scheduleTimer: ReturnType<typeof setTimeout> | null = null;
 let consecutiveErrors = 0;
@@ -128,6 +141,7 @@ export async function transitionSwarmToSleeping(swarmId: string): Promise<void> 
   });
 
   await eventBus.emit("swarm_sleeping", { swarmId, name: swarm.name, nextRunAt }, "scheduler");
+  await notifySwarmCompletion(swarm.name, `Run complete. Sleeping until next scheduled run: ${new Date(nextRunAt).toLocaleString()}`, swarmId);
   log(`Swarm ${swarm.name} sleeping until ${nextRunAt}`, "scheduler");
 }
 
@@ -658,6 +672,7 @@ export async function swarmAction(swarmId: string, action: string): Promise<Swar
 
   if (newStatus === "completed") {
     await eventBus.emit("swarm_completed", { swarmId, name: swarm.name }, "nami");
+    await notifySwarmCompletion(swarm.name, "Manually completed.", swarmId);
   }
 
   log(`Swarm ${swarm.name} action: ${action} -> ${newStatus}`, "engine");
@@ -1253,6 +1268,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
               completedAt: new Date().toISOString(),
             });
             await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary }, "swarm_queen");
+            await notifySwarmCompletion(swarm.name, summary, swarmId);
             log(`SwarmQueen completed swarm ${swarm.name}: ${summary}`, "engine");
           }
           return;
@@ -1285,6 +1301,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
             content: `Auto-completed: Queen was idle for ${idleCycles} consecutive cycles without taking any structured action (spawn/assign/review/complete).`,
             type: "completion",
           });
+          const idleSummary = `Auto-completed after ${idleCycles} idle cycles`;
           const currentSwarmForSchedule = await storage.getSwarm(swarmId);
           if (currentSwarmForSchedule?.schedule?.enabled) {
             await transitionSwarmToSleeping(swarmId);
@@ -1294,7 +1311,8 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
               progress: 100,
               completedAt: new Date().toISOString(),
             });
-            await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary: `Auto-completed after ${idleCycles} idle cycles` }, "swarm_queen");
+            await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary: idleSummary }, "swarm_queen");
+            await notifySwarmCompletion(swarm.name, idleSummary, swarmId);
           }
           return;
         }
@@ -1374,6 +1392,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
         completedAt: new Date().toISOString(),
       });
       await eventBus.emit("swarm_completed", { swarmId, name: swarm.name, summary: "Max cycles reached" }, "swarm_queen");
+      await notifySwarmCompletion(swarm.name, "Max cycles reached — auto-completed.", swarmId);
       log(`SwarmQueen max cycles reached for swarm ${swarm.name}`, "engine");
     }
   }
@@ -1421,5 +1440,6 @@ export async function runSwarmSteps(swarmId: string): Promise<Swarm> {
 
   const completed = await storage.updateSwarm(swarmId, { status: "completed", progress: 100, completedAt: new Date().toISOString() });
   await eventBus.emit("swarm_completed", { swarmId, name: swarm.name }, "nami");
+  await notifySwarmCompletion(swarm.name, "All steps completed.", swarmId);
   return completed!;
 }

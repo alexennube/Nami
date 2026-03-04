@@ -78,6 +78,10 @@ export default function Chat() {
 
   useEffect(() => {
     const unsub = namiWs.subscribe((event: NamiEvent) => {
+      if (event.type === "chat_message") {
+        queryClient.invalidateQueries({ queryKey: ["/api/chat", activeSessionId] });
+        return;
+      }
       if (event.type !== "chat_stream") return;
       const p = event.payload as any;
       if (p.sessionId && p.sessionId !== activeSessionId) return;

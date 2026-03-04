@@ -1426,7 +1426,12 @@ export async function executeToolCall(name: string, args: Record<string, any>): 
   }
   
   const tool = getToolByName(name);
-  if (!tool) return `Error: Unknown tool '${name}'.`;
+  if (!tool) {
+    if (["spawn", "assign", "review", "complete"].includes(name)) {
+      return `Error: '${name}' is not an API function tool. You MUST use the markdown code block syntax (e.g., \`\`\`${name}\\n{...}\\n\`\`\`) in your regular message content as instructed in your system prompt. Do NOT use tool/function calling for swarm management.`;
+    }
+    return `Error: Unknown tool '${name}'.`;
+  }
   if (!tool.enabled) return `Error: Tool '${name}' is currently disabled.`;
 
   log(`Executing tool: ${name}(${JSON.stringify(args).substring(0, 100)})`, "tools");
