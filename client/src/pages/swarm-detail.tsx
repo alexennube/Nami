@@ -35,9 +35,9 @@ function MessageBubble({ msg }: { msg: SwarmMessage }) {
   if (isSystem || isError) {
     return (
       <div className="flex justify-center my-2" data-testid={`swarm-msg-${msg.id}`}>
-        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] ${isError ? "bg-red-500/10 text-red-400" : "bg-muted/50 text-muted-foreground"}`}>
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-[11px] max-w-full ${isError ? "bg-red-500/10 text-red-400" : "bg-muted/50 text-muted-foreground"}`}>
           <Icon className="w-3 h-3 shrink-0" />
-          <span>{msg.content}</span>
+          <span className="break-words [overflow-wrap:anywhere]">{msg.content}</span>
         </div>
       </div>
     );
@@ -48,8 +48,8 @@ function MessageBubble({ msg }: { msg: SwarmMessage }) {
       <div className={`flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-1 ${isQueen ? "bg-purple-500/20" : isSpawn ? "bg-blue-500/20" : "bg-muted/30"}`}>
         <Icon className={`w-3.5 h-3.5 ${config.color}`} />
       </div>
-      <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-0.5 min-w-0 w-0 flex-1 overflow-hidden">
+        <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-[11px] font-medium ${config.color}`}>{msg.agentName}</span>
           <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4">
             {config.label}
@@ -58,12 +58,12 @@ function MessageBubble({ msg }: { msg: SwarmMessage }) {
             {new Date(msg.timestamp).toLocaleTimeString()}
           </span>
         </div>
-        <div className={`rounded-lg px-3 py-2 text-xs leading-relaxed break-words overflow-hidden ${
+        <div className={`rounded-lg px-3 py-2 text-xs leading-relaxed break-words overflow-hidden max-w-full ${
           isQueen ? "bg-purple-500/10 border border-purple-500/20" :
           isSpawn && msg.type === "spawn_created" ? "bg-amber-500/10 border border-amber-500/20" :
           "bg-blue-500/10 border border-blue-500/20"
         }`}>
-          <div className="prose prose-xs prose-invert max-w-none [overflow-wrap:anywhere]">
+          <div className="prose prose-xs prose-invert max-w-full overflow-hidden [overflow-wrap:anywhere]">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -75,12 +75,12 @@ function MessageBubble({ msg }: { msg: SwarmMessage }) {
                 code: ({ className, children, ...props }) => {
                   const isInline = !className;
                   return isInline ? (
-                    <code className="bg-muted px-1 py-0.5 rounded text-[10px] font-mono text-primary" {...props}>{children}</code>
+                    <code className="bg-muted px-1 py-0.5 rounded text-[10px] font-mono text-primary [overflow-wrap:anywhere]" {...props}>{children}</code>
                   ) : (
-                    <code className={`block bg-muted/50 border border-border rounded p-2 my-1.5 text-[10px] font-mono overflow-x-auto whitespace-pre ${className || ""}`} {...props}>{children}</code>
+                    <code className={`block bg-muted/50 border border-border rounded p-2 my-1.5 text-[10px] font-mono overflow-x-auto whitespace-pre max-w-full ${className || ""}`} {...props}>{children}</code>
                   );
                 },
-                pre: ({ children }) => <pre className="bg-muted/50 border border-border rounded p-2 my-1.5 overflow-x-auto">{children}</pre>,
+                pre: ({ children }) => <pre className="bg-muted/50 border border-border rounded p-2 my-1.5 overflow-x-auto max-w-full">{children}</pre>,
                 table: ({ children }) => (
                   <div className="overflow-x-auto my-1.5">
                     <table className="min-w-full text-[10px] border-collapse border border-border">{children}</table>
@@ -253,7 +253,7 @@ export default function SwarmDetail() {
           </div>
         ) : (
           <ScrollArea className="h-full" ref={scrollRef}>
-            <div className="p-4 space-y-1">
+            <div className="p-3 md:p-4 space-y-1 overflow-x-hidden">
               {messages.map((msg) => (
                 <MessageBubble key={msg.id} msg={msg} />
               ))}
