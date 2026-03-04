@@ -15,6 +15,12 @@ export interface ChatMessage {
   name?: string;
 }
 
+export type StreamEvent =
+  | { type: "tool_start"; name: string; round: number }
+  | { type: "tool_result"; name: string; round: number }
+  | { type: "text_delta"; content: string }
+  | { type: "text_done"; content: string };
+
 export interface ChatOptions {
   model?: string;
   temperature?: number;
@@ -24,6 +30,7 @@ export interface ChatOptions {
   maxToolRounds?: number;
   provider?: InferenceProvider;
   excludeTools?: string[];
+  onStream?: (event: StreamEvent) => void;
 }
 
 export async function getApiKey(): Promise<string> {
@@ -182,6 +189,7 @@ export async function chatCompletion(
           }
 
           log(`Tool call: ${fnName}(${JSON.stringify(fnArgs).substring(0, 80)})`, "openrouter");
+          options.onStream?.({ type: "tool_start", name: fnName, round });
 
           let result: string;
           if (engineMind.isInitialized()) {
@@ -194,6 +202,7 @@ export async function chatCompletion(
             result = await executeToolCall(fnName, fnArgs);
           }
           allToolCalls.push({ name: fnName, args: fnArgs, result: result.substring(0, 500) });
+          options.onStream?.({ type: "tool_result", name: fnName, round });
 
           conversationMessages.push({
             role: "tool",
@@ -211,6 +220,10 @@ export async function chatCompletion(
 
     if (!finalContent && allToolCalls.length > 0) {
       finalContent = `Executed ${allToolCalls.length} tool call(s): ${allToolCalls.map((tc) => tc.name).join(", ")}.`;
+    }
+
+    if (finalContent) {
+      options.onStream?.({ type: "text_done", content: finalContent });
     }
 
     log(`${provider} response: ${totalTokens} tokens (${totalPromptTokens}p/${totalCompletionTokens}c), ${allToolCalls.length} tool calls`, "openrouter");

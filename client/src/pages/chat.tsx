@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,10 +10,11 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { Send, ChevronDown, ChevronUp, Heart, PanelRightClose, Clock, Zap, Moon, AlertTriangle, Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Check } from "lucide-react";
+import { Send, ChevronDown, ChevronUp, Heart, PanelRightClose, Clock, Zap, Moon, AlertTriangle, Plus, MessageSquare, MoreHorizontal, Pencil, Trash2, Check, Wrench, Loader2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { ChatMessage, ChatSession, EngineStatus, HeartbeatLog } from "@shared/schema";
+import { namiWs } from "@/lib/websocket";
+import type { ChatMessage, ChatSession, EngineStatus, HeartbeatLog, NamiEvent } from "@shared/schema";
 
 export default function Chat() {
   const [input, setInput] = useState("");
@@ -24,6 +25,11 @@ export default function Chat() {
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [waitingForReply, setWaitingForReply] = useState(false);
+  const [streamStatus, setStreamStatus] = useState<{
+    tools: string[];
+    activeTool: string | null;
+    done: boolean;
+  } | null>(null);
   const messageCountRef = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,9 +70,34 @@ export default function Chat() {
       const lastMsg = messages[messages.length - 1];
       if (lastMsg && lastMsg.role === "assistant") {
         setWaitingForReply(false);
+        setStreamStatus(null);
       }
     }
   }, [messages, waitingForReply]);
+
+  useEffect(() => {
+    const unsub = namiWs.subscribe((event: NamiEvent) => {
+      if (event.type !== "chat_stream") return;
+      const p = event.payload as any;
+      if (p.sessionId && p.sessionId !== activeSessionId) return;
+      if (p.streamType === "tool_start") {
+        setStreamStatus({
+          tools: p.toolsSoFar || [],
+          activeTool: p.tool,
+          done: false,
+        });
+      } else if (p.streamType === "tool_result") {
+        setStreamStatus((prev) => prev ? { ...prev, activeTool: null } : null);
+      } else if (p.streamType === "text_done") {
+        setStreamStatus((prev) => prev ? { ...prev, done: true } : null);
+      } else if (p.streamType === "error") {
+        setWaitingForReply(false);
+        setStreamStatus(null);
+        toast({ title: "Nami encountered an error", description: p.error, variant: "destructive" });
+      }
+    });
+    return unsub;
+  }, [activeSessionId]);
 
   const sendMutation = useMutation({
     mutationFn: async (message: string) => {
@@ -90,6 +121,7 @@ export default function Chat() {
       queryClient.setQueryData<ChatMessage[]>(["/api/chat", activeSessionId], (old = []) => [...old, optimisticMsg]);
       messageCountRef.current = (previous?.length || 0) + 1;
       setWaitingForReply(true);
+      setStreamStatus(null);
       return { previous };
     },
     onSuccess: () => {
@@ -282,13 +314,43 @@ export default function Chat() {
                 <div>
                   <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Nami</p>
                   <div className="bg-card border border-border rounded-md p-4 max-w-lg">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <div className="flex gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
-                        <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+                    {streamStatus && streamStatus.tools.length > 0 ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                          <span>
+                            {streamStatus.done
+                              ? "Composing response..."
+                              : streamStatus.activeTool
+                                ? `Running ${streamStatus.activeTool}...`
+                                : "Thinking..."}
+                          </span>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {streamStatus.tools.map((tool, i) => (
+                            <span
+                              key={`${tool}-${i}`}
+                              className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                                tool === streamStatus.activeTool
+                                  ? "bg-primary/20 text-primary border border-primary/30"
+                                  : "bg-muted text-muted-foreground"
+                              }`}
+                            >
+                              <Wrench className="w-2.5 h-2.5" />
+                              {tool}
+                            </span>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <div className="flex gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

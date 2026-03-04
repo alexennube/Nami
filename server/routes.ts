@@ -353,11 +353,16 @@ export async function registerRoutes(
         }
         storage.setActiveChatSessionId(sessionId);
       }
-      res.json({ accepted: true, message: "Processing..." });
+      const activeSessionId = sessionId || storage.getActiveChatSessionId();
+      res.json({ accepted: true, message: "Processing...", sessionId: activeSessionId });
 
-      chatWithNami(message).catch((err) => {
+      chatWithNami(message, activeSessionId).catch((err) => {
         log(`Chat inference error: ${err.message}`, "engine");
-        eventBus.emit({ type: "message_sent", data: { error: err.message } });
+        eventBus.broadcast("chat_stream", {
+          streamType: "error",
+          error: err.message,
+          sessionId: activeSessionId,
+        }, "nami");
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });

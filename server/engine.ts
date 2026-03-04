@@ -2,6 +2,7 @@ import { storage } from "./storage";
 import { chatCompletion, calculateCost, fetchModelPricing, type ChatMessage as OpenRouterMessage, type ChatResult } from "./openrouter";
 import { log } from "./index";
 import { engineMind } from "./engine-mind";
+import { randomUUID } from "crypto";
 import type { Agent, Swarm, SwarmSchedule, NamiEvent, EngineState, InsertUsageRecord } from "@shared/schema";
 
 async function recordUsage(
@@ -41,6 +42,11 @@ class EventBus {
     const event = await storage.addEvent({ type, payload, source });
     this.listeners.forEach((cb) => cb(event));
     return event;
+  }
+
+  broadcast(type: NamiEvent["type"], payload: Record<string, any>, source: string) {
+    const event: NamiEvent = { id: randomUUID(), type, payload, source, timestamp: new Date().toISOString() };
+    this.listeners.forEach((cb) => cb(event));
   }
 }
 
@@ -741,7 +747,9 @@ Use these tools proactively when you need to understand, modify, or interact wit
 
 You communicate clearly and concisely. When users describe tasks, help them understand how you'll orchestrate agents and swarms to accomplish their goals. You think in terms of decomposing work into agent hierarchies.`;
 
-export async function chatWithNami(userMessage: string): Promise<{ content: string; tokensUsed: number }> {
+export async function chatWithNami(userMessage: string, sessionId?: string): Promise<{ content: string; tokensUsed: number }> {
+  const chatSessionId = sessionId || storage.getActiveChatSessionId();
+
   await storage.addChatMessage({
     role: "user",
     content: userMessage,
@@ -778,7 +786,37 @@ export async function chatWithNami(userMessage: string): Promise<{ content: stri
   ];
 
   const config = await storage.getConfig();
-  const chatResult = await chatCompletion(messages, { model: config.defaultModel, useTools: true });
+  const streamTools: string[] = [];
+  const chatResult = await chatCompletion(messages, {
+    model: config.defaultModel,
+    useTools: true,
+    onStream: (event) => {
+      if (event.type === "tool_start") {
+        streamTools.push(event.name);
+        eventBus.broadcast("chat_stream", {
+          streamType: "tool_start",
+          tool: event.name,
+          round: event.round,
+          toolsSoFar: [...streamTools],
+          sessionId: chatSessionId,
+        }, "nami");
+      } else if (event.type === "tool_result") {
+        eventBus.broadcast("chat_stream", {
+          streamType: "tool_result",
+          tool: event.name,
+          round: event.round,
+          toolsSoFar: [...streamTools],
+          sessionId: chatSessionId,
+        }, "nami");
+      } else if (event.type === "text_done") {
+        eventBus.broadcast("chat_stream", {
+          streamType: "text_done",
+          content: event.content,
+          sessionId: chatSessionId,
+        }, "nami");
+      }
+    },
+  });
   const { content, tokensUsed, toolCalls } = chatResult;
   await recordUsage(chatResult, "chat");
 
