@@ -135,6 +135,50 @@ async function ensureTables(): Promise<void> {
       updated_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_crm_accounts (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_crm_contacts (
+      id TEXT PRIMARY KEY,
+      account_id TEXT,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_crm_contact_comments (
+      id TEXT PRIMARY KEY,
+      contact_id TEXT NOT NULL,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_crm_activities (
+      id TEXT PRIMARY KEY,
+      contact_id TEXT NOT NULL,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_crm_sequences (
+      id TEXT PRIMARY KEY,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_contacts_account ON nami_crm_contacts(account_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_activities_contact ON nami_crm_activities(contact_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_comments_contact ON nami_crm_contact_comments(contact_id)`);
 }
 
 let initialized = false;
@@ -423,6 +467,126 @@ export async function dbSaveKanbanBoard(columns: any[], cards: any[]): Promise<v
   for (const card of cards) {
     await dbUpsertKanbanCard(card);
   }
+}
+
+export async function dbGetCrmAccounts(): Promise<any[]> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_crm_accounts ORDER BY created_at DESC");
+  return result.rows.map(r => r.data);
+}
+
+export async function dbGetCrmAccount(id: string): Promise<any | null> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_crm_accounts WHERE id = $1", [id]);
+  return result.rows[0]?.data || null;
+}
+
+export async function dbUpsertCrmAccount(account: any): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_crm_accounts (id, data, created_at, updated_at) VALUES ($1, $2::jsonb, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`,
+    [account.id, JSON.stringify(account)]
+  );
+}
+
+export async function dbDeleteCrmAccount(id: string): Promise<void> {
+  await init();
+  await pool.query("UPDATE nami_crm_contacts SET account_id = NULL, data = jsonb_set(data, '{accountId}', 'null') WHERE account_id = $1", [id]);
+  await pool.query("DELETE FROM nami_crm_accounts WHERE id = $1", [id]);
+}
+
+export async function dbGetCrmContacts(): Promise<any[]> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_crm_contacts ORDER BY created_at DESC");
+  return result.rows.map(r => r.data);
+}
+
+export async function dbGetCrmContactsByAccount(accountId: string): Promise<any[]> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_crm_contacts WHERE account_id = $1 ORDER BY created_at DESC", [accountId]);
+  return result.rows.map(r => r.data);
+}
+
+export async function dbGetCrmContact(id: string): Promise<any | null> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_crm_contacts WHERE id = $1", [id]);
+  return result.rows[0]?.data || null;
+}
+
+export async function dbUpsertCrmContact(contact: any): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_crm_contacts (id, account_id, data, created_at, updated_at) VALUES ($1, $2, $3::jsonb, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET account_id = $2, data = $3::jsonb, updated_at = NOW()`,
+    [contact.id, contact.accountId || null, JSON.stringify(contact)]
+  );
+}
+
+export async function dbDeleteCrmContact(id: string): Promise<void> {
+  await init();
+  await pool.query("DELETE FROM nami_crm_contact_comments WHERE contact_id = $1", [id]);
+  await pool.query("DELETE FROM nami_crm_activities WHERE contact_id = $1", [id]);
+  await pool.query("DELETE FROM nami_crm_contacts WHERE id = $1", [id]);
+}
+
+export async function dbGetCrmContactComments(contactId: string): Promise<any[]> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_crm_contact_comments WHERE contact_id = $1 ORDER BY created_at ASC", [contactId]);
+  return result.rows.map(r => r.data);
+}
+
+export async function dbAddCrmContactComment(comment: any): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_crm_contact_comments (id, contact_id, data, created_at) VALUES ($1, $2, $3::jsonb, NOW())`,
+    [comment.id, comment.contactId, JSON.stringify(comment)]
+  );
+}
+
+export async function dbDeleteCrmContactComment(id: string): Promise<void> {
+  await init();
+  await pool.query("DELETE FROM nami_crm_contact_comments WHERE id = $1", [id]);
+}
+
+export async function dbGetCrmActivities(contactId: string): Promise<any[]> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_crm_activities WHERE contact_id = $1 ORDER BY created_at DESC", [contactId]);
+  return result.rows.map(r => r.data);
+}
+
+export async function dbAddCrmActivity(activity: any): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_crm_activities (id, contact_id, data, created_at) VALUES ($1, $2, $3::jsonb, NOW())`,
+    [activity.id, activity.contactId, JSON.stringify(activity)]
+  );
+}
+
+export async function dbGetCrmSequences(): Promise<any[]> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_crm_sequences ORDER BY created_at DESC");
+  return result.rows.map(r => r.data);
+}
+
+export async function dbGetCrmSequence(id: string): Promise<any | null> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_crm_sequences WHERE id = $1", [id]);
+  return result.rows[0]?.data || null;
+}
+
+export async function dbUpsertCrmSequence(sequence: any): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_crm_sequences (id, data, created_at, updated_at) VALUES ($1, $2::jsonb, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET data = $2::jsonb, updated_at = NOW()`,
+    [sequence.id, JSON.stringify(sequence)]
+  );
+}
+
+export async function dbDeleteCrmSequence(id: string): Promise<void> {
+  await init();
+  await pool.query("DELETE FROM nami_crm_sequences WHERE id = $1", [id]);
 }
 
 export { pool, init as dbInit };

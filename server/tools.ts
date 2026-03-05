@@ -3,7 +3,7 @@ import * as path from "path";
 import { exec, execFile } from "child_process";
 import { log } from "./index";
 import { storage } from "./storage";
-import { dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanCards, dbGetKanbanComments, dbAddKanbanComment } from "./db-persist";
+import { dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanCards, dbGetKanbanComments, dbAddKanbanComment, dbGetCrmContacts, dbGetCrmContact, dbGetCrmActivities, dbAddCrmActivity, dbGetCrmContactComments, dbAddCrmContactComment, dbUpsertCrmContact } from "./db-persist";
 import crypto from "crypto";
 
 type EngineFunctions = {
@@ -1455,7 +1455,151 @@ const kanbanCommentTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool, browserControlTool, kanbanCommentTool];
+const crmTool: NamiTool = {
+  name: "crm",
+  description: "Interact with the CRM system. Manage contacts, log activities (emails sent, profile visits, research findings), post comments, and read contact intelligence. Use this to keep the CRM updated with all agent interactions and discoveries about contacts.",
+  category: "system",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        description: "Action: 'list_contacts', 'get_contact', 'search_contacts', 'update_contact', 'log_activity', 'add_comment', 'get_activities', 'get_comments'",
+        enum: ["list_contacts", "get_contact", "search_contacts", "update_contact", "log_activity", "add_comment", "get_activities", "get_comments"],
+      },
+      contact_id: {
+        type: "string",
+        description: "Contact ID (required for get_contact, update_contact, log_activity, add_comment, get_activities, get_comments)",
+      },
+      query: {
+        type: "string",
+        description: "Search query for search_contacts (searches name, email, company, tags)",
+      },
+      updates: {
+        type: "object",
+        description: "Fields to update on a contact (for update_contact). Can include: notes, tags, stage, title, company, linkedIn, twitter, etc.",
+      },
+      activity_type: {
+        type: "string",
+        description: "Type of activity for log_activity: email_sent, email_received, profile_visit, note, call, meeting, research, sequence_step, engagement, other",
+      },
+      title: {
+        type: "string",
+        description: "Title/subject for the activity (required for log_activity)",
+      },
+      content: {
+        type: "string",
+        description: "Content/description for log_activity or add_comment",
+      },
+      metadata: {
+        type: "object",
+        description: "Optional metadata for activity (e.g., { url: '...', platform: 'linkedin' })",
+      },
+    },
+    required: ["action"],
+  },
+  execute: async (args, agentContext) => {
+    const action = args.action as string;
+    const contactId = args.contact_id as string;
+    const authorName = agentContext?.agentName || "Nami";
+    const authorType = (agentContext?.agentRole === "queen" || agentContext?.agentRole === "swarm_queen") ? "queen" : "agent";
+
+    try {
+      if (action === "list_contacts") {
+        const contacts = await dbGetCrmContacts();
+        if (contacts.length === 0) return "No contacts in CRM.";
+        return contacts.slice(0, 50).map((c: any) =>
+          `- **${c.firstName} ${c.lastName}** (${c.id.substring(0, 8)}…) | ${c.email || "no email"} | ${c.company || "no company"} | Stage: ${c.stage || "lead"}`
+        ).join("\n");
+      }
+
+      if (action === "get_contact") {
+        if (!contactId) return "Error: contact_id required.";
+        const c = await dbGetCrmContact(contactId);
+        if (!c) return "Error: Contact not found.";
+        return `**${c.firstName} ${c.lastName}**\nEmail: ${c.email}\nPhone: ${c.phone}\nTitle: ${c.title}\nCompany: ${c.company}\nStage: ${c.stage}\nLinkedIn: ${c.linkedIn}\nTwitter: ${c.twitter}\nTags: ${(c.tags || []).join(", ")}\nNotes: ${c.notes || "(none)"}\nCreated: ${c.createdAt}`;
+      }
+
+      if (action === "search_contacts") {
+        const query = (args.query as string || "").toLowerCase();
+        if (!query) return "Error: query required for search.";
+        const contacts = await dbGetCrmContacts();
+        const matches = contacts.filter((c: any) =>
+          `${c.firstName} ${c.lastName} ${c.email} ${c.company} ${(c.tags || []).join(" ")}`.toLowerCase().includes(query)
+        );
+        if (matches.length === 0) return `No contacts matching "${query}".`;
+        return matches.slice(0, 20).map((c: any) =>
+          `- **${c.firstName} ${c.lastName}** (${c.id.substring(0, 8)}…) | ${c.email || "no email"} | ${c.company || ""}`
+        ).join("\n");
+      }
+
+      if (action === "update_contact") {
+        if (!contactId) return "Error: contact_id required.";
+        const c = await dbGetCrmContact(contactId);
+        if (!c) return "Error: Contact not found.";
+        const updates = args.updates as Record<string, any> || {};
+        const updated = { ...c, ...updates, id: contactId, updatedAt: new Date().toISOString() };
+        await dbUpsertCrmContact(updated);
+        return `Contact ${c.firstName} ${c.lastName} updated.`;
+      }
+
+      if (action === "log_activity") {
+        if (!contactId) return "Error: contact_id required.";
+        const actType = args.activity_type as string || "other";
+        const title = args.title as string;
+        if (!title) return "Error: title required for activity.";
+        const activity = {
+          id: crypto.randomUUID(), contactId,
+          type: actType, title,
+          description: (args.content as string) || "",
+          metadata: (args.metadata as Record<string, any>) || {},
+          agentName: authorName,
+          createdAt: new Date().toISOString(),
+        };
+        await dbAddCrmActivity(activity);
+        return `Activity logged for contact ${contactId.substring(0, 8)}…: ${title}`;
+      }
+
+      if (action === "add_comment") {
+        if (!contactId) return "Error: contact_id required.";
+        const content = args.content as string;
+        if (!content) return "Error: content required.";
+        const comment = {
+          id: crypto.randomUUID(), contactId,
+          author: authorName, authorType,
+          content, createdAt: new Date().toISOString(),
+        };
+        await dbAddCrmContactComment(comment);
+        return `Comment posted on contact ${contactId.substring(0, 8)}… by ${authorName}.`;
+      }
+
+      if (action === "get_activities") {
+        if (!contactId) return "Error: contact_id required.";
+        const activities = await dbGetCrmActivities(contactId);
+        if (activities.length === 0) return "No activities for this contact.";
+        return activities.slice(0, 30).map((a: any) =>
+          `[${a.type}] ${a.title} — ${a.agentName || "system"} (${new Date(a.createdAt).toLocaleString()})\n${a.description || ""}`
+        ).join("\n---\n");
+      }
+
+      if (action === "get_comments") {
+        if (!contactId) return "Error: contact_id required.";
+        const comments = await dbGetCrmContactComments(contactId);
+        if (comments.length === 0) return "No comments for this contact.";
+        return comments.map((c: any) =>
+          `**${c.author}** (${c.authorType}) — ${new Date(c.createdAt).toLocaleString()}:\n${c.content}`
+        ).join("\n---\n");
+      }
+
+      return "Error: Invalid action.";
+    } catch (err: any) {
+      return `Error: ${err.message}`;
+    }
+  },
+};
+
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool, browserControlTool, kanbanCommentTool, crmTool];
 
 export function getTools(): NamiTool[] {
   return allTools;

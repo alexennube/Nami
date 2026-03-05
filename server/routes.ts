@@ -10,7 +10,7 @@ import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCode
 import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
-import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount, dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanColumns, dbGetKanbanCards, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbUpsertKanbanCard, dbDeleteKanbanCard, dbSaveKanbanBoard, dbGetKanbanComments, dbAddKanbanComment, dbDeleteKanbanComment, dbDeleteKanbanCommentsByCard } from "./db-persist";
+import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount, dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanColumns, dbGetKanbanCards, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbUpsertKanbanCard, dbDeleteKanbanCard, dbSaveKanbanBoard, dbGetKanbanComments, dbAddKanbanComment, dbDeleteKanbanComment, dbDeleteKanbanCommentsByCard, dbGetCrmAccounts, dbGetCrmAccount, dbUpsertCrmAccount, dbDeleteCrmAccount, dbGetCrmContacts, dbGetCrmContactsByAccount, dbGetCrmContact, dbUpsertCrmContact, dbDeleteCrmContact, dbGetCrmContactComments, dbAddCrmContactComment, dbDeleteCrmContactComment, dbGetCrmActivities, dbAddCrmActivity, dbGetCrmSequences, dbGetCrmSequence, dbUpsertCrmSequence, dbDeleteCrmSequence } from "./db-persist";
 import crypto from "crypto";
 import { engineMind } from "./engine-mind";
 
@@ -1338,6 +1338,250 @@ export async function registerRoutes(
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  app.get("/api/crm/accounts", async (_req, res) => {
+    try {
+      const accounts = await dbGetCrmAccounts();
+      res.json(accounts);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/crm/accounts/:id", async (req, res) => {
+    try {
+      const account = await dbGetCrmAccount(req.params.id);
+      if (!account) return res.status(404).json({ error: "Account not found" });
+      res.json(account);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/crm/accounts", async (req, res) => {
+    try {
+      const { name, domain, industry, description, website, size } = req.body;
+      if (!name) return res.status(400).json({ error: "name required" });
+      const now = new Date().toISOString();
+      const account = { id: crypto.randomUUID(), name, domain: domain || "", industry: industry || "", description: description || "", website: website || "", size: size || "", createdAt: now, updatedAt: now };
+      await dbUpsertCrmAccount(account);
+      res.status(201).json(account);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.patch("/api/crm/accounts/:id", async (req, res) => {
+    try {
+      const existing = await dbGetCrmAccount(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Account not found" });
+      const updated = { ...existing, ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
+      await dbUpsertCrmAccount(updated);
+      res.json(updated);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.delete("/api/crm/accounts/:id", async (req, res) => {
+    try {
+      await dbDeleteCrmAccount(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/crm/contacts", async (req, res) => {
+    try {
+      const accountId = req.query.accountId as string;
+      const contacts = accountId ? await dbGetCrmContactsByAccount(accountId) : await dbGetCrmContacts();
+      res.json(contacts);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/crm/contacts/:id", async (req, res) => {
+    try {
+      const contact = await dbGetCrmContact(req.params.id);
+      if (!contact) return res.status(404).json({ error: "Contact not found" });
+      res.json(contact);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/crm/contacts", async (req, res) => {
+    try {
+      const { firstName, lastName } = req.body;
+      if (!firstName || !lastName) return res.status(400).json({ error: "firstName and lastName required" });
+      const now = new Date().toISOString();
+      const contact = {
+        id: crypto.randomUUID(),
+        accountId: req.body.accountId || null,
+        firstName, lastName,
+        email: req.body.email || "", phone: req.body.phone || "",
+        title: req.body.title || "", company: req.body.company || "",
+        linkedIn: req.body.linkedIn || "", twitter: req.body.twitter || "",
+        website: req.body.website || "", notes: req.body.notes || "",
+        tags: req.body.tags || [], stage: req.body.stage || "lead",
+        sequenceId: null, sequenceStep: null,
+        createdAt: now, updatedAt: now,
+      };
+      await dbUpsertCrmContact(contact);
+      res.status(201).json(contact);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.patch("/api/crm/contacts/:id", async (req, res) => {
+    try {
+      const existing = await dbGetCrmContact(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Contact not found" });
+      const updated = { ...existing, ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
+      await dbUpsertCrmContact(updated);
+      res.json(updated);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.delete("/api/crm/contacts/:id", async (req, res) => {
+    try {
+      await dbDeleteCrmContact(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/crm/contacts/:id/comments", async (req, res) => {
+    try {
+      const comments = await dbGetCrmContactComments(req.params.id);
+      res.json(comments);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/crm/contacts/:id/comments", async (req, res) => {
+    try {
+      const { author, authorType, content } = req.body;
+      if (!content || !author) return res.status(400).json({ error: "author and content required" });
+      const validTypes = ["user", "agent", "queen"];
+      const comment = {
+        id: crypto.randomUUID(), contactId: req.params.id,
+        author: String(author).substring(0, 100),
+        authorType: validTypes.includes(authorType) ? authorType : "user",
+        content: String(content).substring(0, 10000),
+        createdAt: new Date().toISOString(),
+      };
+      await dbAddCrmContactComment(comment);
+      res.json(comment);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.delete("/api/crm/comments/:id", async (req, res) => {
+    try {
+      await dbDeleteCrmContactComment(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/crm/contacts/:id/activities", async (req, res) => {
+    try {
+      const activities = await dbGetCrmActivities(req.params.id);
+      res.json(activities);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/crm/contacts/:id/activities", async (req, res) => {
+    try {
+      const { type, title, description, metadata, agentName } = req.body;
+      if (!type || !title) return res.status(400).json({ error: "type and title required" });
+      const activity = {
+        id: crypto.randomUUID(), contactId: req.params.id,
+        type, title, description: description || "",
+        metadata: metadata || {}, agentName: agentName || "",
+        createdAt: new Date().toISOString(),
+      };
+      await dbAddCrmActivity(activity);
+      res.json(activity);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/crm/sequences", async (_req, res) => {
+    try {
+      const sequences = await dbGetCrmSequences();
+      res.json(sequences);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/crm/sequences/:id", async (req, res) => {
+    try {
+      const seq = await dbGetCrmSequence(req.params.id);
+      if (!seq) return res.status(404).json({ error: "Sequence not found" });
+      res.json(seq);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/crm/sequences", async (req, res) => {
+    try {
+      const { name, description, steps } = req.body;
+      if (!name) return res.status(400).json({ error: "name required" });
+      const now = new Date().toISOString();
+      const seq = {
+        id: crypto.randomUUID(), name, description: description || "",
+        status: "draft" as const, steps: steps || [],
+        contactIds: [], createdAt: now, updatedAt: now,
+      };
+      await dbUpsertCrmSequence(seq);
+      res.status(201).json(seq);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.patch("/api/crm/sequences/:id", async (req, res) => {
+    try {
+      const existing = await dbGetCrmSequence(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Sequence not found" });
+      const updated = { ...existing, ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
+      await dbUpsertCrmSequence(updated);
+      res.json(updated);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.delete("/api/crm/sequences/:id", async (req, res) => {
+    try {
+      await dbDeleteCrmSequence(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/crm/sequences/:id/enroll", async (req, res) => {
+    try {
+      const { contactIds } = req.body;
+      if (!contactIds || !Array.isArray(contactIds)) return res.status(400).json({ error: "contactIds array required" });
+      const seq = await dbGetCrmSequence(req.params.id);
+      if (!seq) return res.status(404).json({ error: "Sequence not found" });
+      const existing = seq.contactIds || [];
+      const newIds = contactIds.filter((id: string) => !existing.includes(id));
+      seq.contactIds = [...existing, ...newIds];
+      seq.updatedAt = new Date().toISOString();
+      await dbUpsertCrmSequence(seq);
+      for (const cid of newIds) {
+        const contact = await dbGetCrmContact(cid);
+        if (contact) {
+          contact.sequenceId = seq.id;
+          contact.sequenceStep = 0;
+          contact.updatedAt = new Date().toISOString();
+          await dbUpsertCrmContact(contact);
+        }
+      }
+      res.json({ enrolled: newIds.length });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post("/api/crm/sequences/:id/unenroll", async (req, res) => {
+    try {
+      const { contactIds } = req.body;
+      if (!contactIds || !Array.isArray(contactIds)) return res.status(400).json({ error: "contactIds array required" });
+      const seq = await dbGetCrmSequence(req.params.id);
+      if (!seq) return res.status(404).json({ error: "Sequence not found" });
+      seq.contactIds = (seq.contactIds || []).filter((id: string) => !contactIds.includes(id));
+      seq.updatedAt = new Date().toISOString();
+      await dbUpsertCrmSequence(seq);
+      for (const cid of contactIds) {
+        const contact = await dbGetCrmContact(cid);
+        if (contact && contact.sequenceId === seq.id) {
+          contact.sequenceId = null;
+          contact.sequenceStep = null;
+          contact.updatedAt = new Date().toISOString();
+          await dbUpsertCrmContact(contact);
+        }
+      }
+      res.json({ unenrolled: contactIds.length });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   return httpServer;
