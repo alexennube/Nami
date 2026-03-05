@@ -214,29 +214,30 @@ export async function bootEngine(): Promise<void> {
   log(`Engine boot: state=${engineState}`, "engine");
   fetchModelPricing().catch(() => {});
 
-  if (engineState === "running") {
-    await eventBus.emit("system", { message: "Engine auto-booted (always-on)" }, "nami");
-    await storage.addThought({
-      content: "Engine auto-booted. Autonomous mode active. Heartbeat will begin ticking.",
-      source: "nami",
-      type: "observation",
-    });
-
-    const hbConfig = await storage.getHeartbeatConfig();
-    if (hbConfig.enabled) {
-      startHeartbeat();
-    }
-
-    startScheduleChecker();
-
-    engineMind.initialize().then(ok => {
-      if (ok) log("Engine Mind (Pi) initialized on boot", "engine");
-    }).catch(err => log(`Engine Mind boot error: ${err.message}`, "engine"));
-
-    log("Engine auto-booted: RUNNING with heartbeat and scheduler", "engine");
-  } else {
-    log(`Engine boot skipped: state is ${engineState}`, "engine");
+  if (engineState !== "running") {
+    log(`Engine was ${engineState}, force-starting on boot`, "engine");
+    await storage.setEngineState("running");
   }
+
+  await eventBus.emit("system", { message: "Engine auto-booted (always-on)" }, "nami");
+  await storage.addThought({
+    content: "Engine auto-booted. Autonomous mode active. Heartbeat will begin ticking.",
+    source: "nami",
+    type: "observation",
+  });
+
+  const hbConfig = await storage.getHeartbeatConfig();
+  if (hbConfig.enabled) {
+    startHeartbeat();
+  }
+
+  startScheduleChecker();
+
+  engineMind.initialize().then(ok => {
+    if (ok) log("Engine Mind (Pi) initialized on boot", "engine");
+  }).catch(err => log(`Engine Mind boot error: ${err.message}`, "engine"));
+
+  log("Engine auto-booted: RUNNING with heartbeat and scheduler", "engine");
 }
 
 export async function startEngine(): Promise<EngineState> {
