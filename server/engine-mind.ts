@@ -338,8 +338,13 @@ SUGGESTIONS: suggestion1 | suggestion2 (or "none")`;
       this.stats.totalCompactions++;
       this.stats.lastActivity = new Date().toISOString();
 
-      const oldMessages = chatHistory.slice(0, originalCount - 20);
-      const recentMessages = chatHistory.slice(-20);
+      const cleanHistory = chatHistory.filter((m) => {
+        if (m.role === "assistant" && m.content.includes("I'm currently **stopped**")) return false;
+        if (m.role === "assistant" && m.content.includes("I'm currently **paused**")) return false;
+        return true;
+      });
+      const oldMessages = cleanHistory.slice(0, cleanHistory.length - 20);
+      const recentMessages = cleanHistory.slice(-20);
 
       const oldContent = oldMessages
         .map(m => `[${m.role}${m.autonomous ? " (auto)" : ""}]: ${m.content.substring(0, 200)}`)

@@ -767,6 +767,13 @@ export async function chatWithNami(userMessage: string, sessionId?: string): Pro
   const chatSessionId = sessionId || storage.getActiveChatSessionId();
   log(`chatWithNami: sessionId=${chatSessionId}, msg="${userMessage.substring(0, 50)}"`, "engine");
 
+  const engineState = await storage.getEngineState();
+  if (engineState !== "running") {
+    const reply = `I'm currently **${engineState}**. Start the engine using the controls in the sidebar to chat with me.`;
+    eventBus.broadcast("chat_message", { content: reply, agentName: "Nami", sessionId: chatSessionId, done: true, ephemeral: true }, "nami");
+    return { content: reply, tokensUsed: 0 };
+  }
+
   await storage.addChatMessage({
     role: "user",
     content: userMessage,
@@ -777,22 +784,6 @@ export async function chatWithNami(userMessage: string, sessionId?: string): Pro
     sessionId: chatSessionId,
   });
 
-  const engineState = await storage.getEngineState();
-  if (engineState !== "running") {
-    const reply = `I'm currently **${engineState}**. Start the engine using the controls in the sidebar to chat with me.`;
-    await storage.addChatMessage({
-      role: "assistant",
-      content: reply,
-      agentId: "nami",
-      agentName: "Nami",
-      tokensUsed: 0,
-      autonomous: false,
-      sessionId: chatSessionId,
-    });
-    eventBus.broadcast("chat_message", { content: reply, agentName: "Nami", sessionId: chatSessionId, done: true }, "nami");
-    return { content: reply, tokensUsed: 0 };
-  }
-
   await storage.addThought({
     content: `User message received: "${userMessage.substring(0, 100)}"`,
     source: "nami",
@@ -800,9 +791,15 @@ export async function chatWithNami(userMessage: string, sessionId?: string): Pro
   });
 
   const history = await storage.getChatHistory();
+  const filteredHistory = history.filter((m) => {
+    if (m.role === "assistant" && m.content.includes("I'm currently **stopped**")) return false;
+    if (m.role === "assistant" && m.content.includes("I'm currently **paused**")) return false;
+    if (m.role === "assistant" && m.content.startsWith("[Context Summary]") && m.content.includes("stopped state")) return false;
+    return true;
+  });
   const messages: OpenRouterMessage[] = [
     { role: "system", content: NAMI_SYSTEM_PROMPT },
-    ...history.slice(-20).map((m) => ({ role: m.role, content: m.content })),
+    ...filteredHistory.slice(-20).map((m) => ({ role: m.role, content: m.content })),
   ];
 
   const config = await storage.getConfig();

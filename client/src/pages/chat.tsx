@@ -25,6 +25,7 @@ export default function Chat() {
   const [renameSessionId, setRenameSessionId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [waitingForReply, setWaitingForReply] = useState(false);
+  const [ephemeralMessages, setEphemeralMessages] = useState<any[]>([]);
   const [streamStatus, setStreamStatus] = useState<{
     tools: string[];
     activeTool: string | null;
@@ -76,11 +77,32 @@ export default function Chat() {
   }, [messages, waitingForReply]);
 
   useEffect(() => {
+    setEphemeralMessages([]);
+  }, [activeSessionId]);
+
+  useEffect(() => {
     const unsub = namiWs.subscribe((event: NamiEvent) => {
       if (event.type === "chat_message") {
         const cm = event.payload as any;
         if (!cm.sessionId || cm.sessionId === activeSessionId) {
-          queryClient.invalidateQueries({ queryKey: ["/api/chat", activeSessionId] });
+          if (cm.ephemeral && cm.content) {
+            setEphemeralMessages((prev) => [
+              ...prev,
+              {
+                id: `ephemeral-${Date.now()}`,
+                role: "assistant",
+                content: cm.content,
+                agentId: "nami",
+                agentName: cm.agentName || "Nami",
+                tokensUsed: 0,
+                autonomous: false,
+                sessionId: activeSessionId,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+          } else {
+            queryClient.invalidateQueries({ queryKey: ["/api/chat", activeSessionId] });
+          }
           if (cm.done) {
             setWaitingForReply(false);
             setStreamStatus(null);
@@ -141,6 +163,7 @@ export default function Chat() {
       messageCountRef.current = (previous?.length || 0) + 1;
       setWaitingForReply(true);
       setStreamStatus(null);
+      setEphemeralMessages([]);
       return { previous };
     },
     onSuccess: () => {
@@ -326,7 +349,7 @@ export default function Chat() {
             </div>
           ) : (
             <div className="space-y-5 py-2 max-w-3xl mx-auto">
-              {messages.map((msg) => (
+              {[...messages, ...ephemeralMessages].map((msg) => (
                 <MessageBubble key={msg.id} message={msg} />
               ))}
               {(sendMutation.isPending || waitingForReply) && (
