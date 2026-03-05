@@ -778,14 +778,6 @@ export async function chatWithNami(userMessage: string, sessionId?: string): Pro
   const engineState = await storage.getEngineState();
   if (engineState !== "running") {
     const reply = `I'm currently **${engineState}**. Start the engine using the controls in the sidebar to chat with me.`;
-    await storage.addChatMessage({
-      role: "assistant",
-      content: reply,
-      agentId: "nami",
-      agentName: "Nami",
-      tokensUsed: 0,
-      autonomous: false,
-    });
     return { content: reply, tokensUsed: 0 };
   }
 
