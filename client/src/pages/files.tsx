@@ -13,6 +13,7 @@ import {
   ArrowLeft,
   Trash2,
   Copy,
+  Download,
   ChevronRight,
   FolderOpen,
   Pencil,
@@ -279,6 +280,24 @@ export default function FilesPage() {
                   {fileData?.content && !editing && (
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={copyContent} data-testid="button-copy-file">
                       <Copy className="w-3.5 h-3.5" />
+                    </Button>
+                  )}
+                  {fileData && !editing && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => {
+                        const a = document.createElement("a");
+                        a.href = `/api/files/download?path=${encodeURIComponent(selectedFile!)}`;
+                        a.download = selectedFile!.split("/").pop() || "file";
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                      }}
+                      data-testid="button-download-file"
+                    >
+                      <Download className="w-3.5 h-3.5" />
                     </Button>
                   )}
                   <Button

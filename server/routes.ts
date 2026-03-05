@@ -1032,6 +1032,30 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/files/download", async (req, res) => {
+    const filePath = req.query.path as string;
+    if (!filePath) return res.status(400).json({ message: "Path required" });
+
+    const resolved = path.resolve(WORKSPACE_ROOT, filePath);
+    if (!resolved.startsWith(WORKSPACE_ROOT)) return res.status(403).json({ message: "Access denied" });
+
+    const relative = path.relative(WORKSPACE_ROOT, resolved);
+    if (isBlockedBrowse(relative)) return res.status(403).json({ message: "Access denied" });
+
+    try {
+      const stat = await fs.promises.stat(resolved);
+      if (stat.isDirectory()) return res.status(400).json({ message: "Cannot download a directory" });
+
+      const filename = path.basename(resolved);
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.setHeader("Content-Length", stat.size);
+      const stream = fs.createReadStream(resolved);
+      stream.pipe(res);
+    } catch (err: any) {
+      res.status(404).json({ message: "File not found" });
+    }
+  });
+
   app.put("/api/files", async (req, res) => {
     const { path: filePath, content } = req.body;
     if (!filePath || typeof content !== "string") return res.status(400).json({ message: "Path and content required" });
