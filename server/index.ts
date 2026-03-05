@@ -190,8 +190,8 @@ app.use((req, res, next) => {
         });
         await engine.bootEngine();
 
-        import("./gemini").then(({ syncGogCLIOnBoot }) => {
-          syncGogCLIOnBoot().catch(() => {});
+        import("./gemini").then(({ preloadRefreshToken, syncGogCLIOnBoot }) => {
+          preloadRefreshToken().then(() => syncGogCLIOnBoot()).catch(() => {});
         });
       } catch (err: any) {
         log(`Engine auto-boot failed (non-fatal): ${err.message}`, "engine");

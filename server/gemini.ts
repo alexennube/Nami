@@ -34,12 +34,15 @@ const GEMINI_SCOPES = [
 
 let cachedAccessToken: string | null = null;
 let tokenExpiresAt = 0;
+let dbRefreshTokenCache: string | null = null;
 
 function isValidRefreshToken(token: string | undefined): boolean {
   return !!token && token.length > 5 && token !== "NA" && token !== "na" && token !== "placeholder";
 }
 
 function getRefreshTokenSync(): string | undefined {
+  if (isValidRefreshToken(dbRefreshTokenCache ?? undefined)) return dbRefreshTokenCache!;
+
   const envToken = process.env.GOOGLE_REFRESH_TOKEN;
   if (isValidRefreshToken(envToken)) return envToken;
 
@@ -57,28 +60,31 @@ async function getRefreshToken(): Promise<string | undefined> {
   try {
     const defaultAccount = await getDefaultGoogleAccount();
     if (defaultAccount && isValidRefreshToken(defaultAccount.refresh_token)) {
+      dbRefreshTokenCache = defaultAccount.refresh_token;
       process.env.GOOGLE_REFRESH_TOKEN = defaultAccount.refresh_token;
       return defaultAccount.refresh_token;
     }
   } catch {}
 
-  const syncToken = getRefreshTokenSync();
-  if (syncToken) return syncToken;
-
   try {
     const dbToken = await dbGet<string>("google_refresh_token");
     if (isValidRefreshToken(dbToken ?? undefined)) {
+      dbRefreshTokenCache = dbToken!;
       process.env.GOOGLE_REFRESH_TOKEN = dbToken!;
       log("Loaded Google refresh token from database (legacy)", "gemini");
       return dbToken!;
     }
   } catch {}
 
+  const syncToken = getRefreshTokenSync();
+  if (syncToken) return syncToken;
+
   return undefined;
 }
 
 export async function saveRefreshToken(token: string): Promise<{ diskOk: boolean; dbOk: boolean }> {
   process.env.GOOGLE_REFRESH_TOKEN = token;
+  dbRefreshTokenCache = token;
   cachedAccessToken = null;
   tokenExpiresAt = 0;
 
@@ -146,12 +152,22 @@ export async function getGeminiAccessToken(): Promise<string> {
 
   if (!res.ok) {
     const errText = await res.text();
+    const isRevoked = errText.includes("invalid_grant") || errText.includes("Token has been expired or revoked");
+    if (isRevoked) {
+      log(`Google refresh token is revoked/expired. Please re-authenticate via Integrations page.`, "gemini");
+    }
     throw new Error(`Failed to refresh Google access token: ${res.status} ${errText}`);
   }
 
-  const data = await res.json() as { access_token: string; expires_in: number };
+  const data = await res.json() as { access_token: string; expires_in: number; refresh_token?: string };
   cachedAccessToken = data.access_token;
   tokenExpiresAt = Date.now() + (data.expires_in * 1000);
+
+  if (data.refresh_token) {
+    log(`Google issued a new refresh token — saving it`, "gemini");
+    await saveRefreshToken(data.refresh_token);
+  }
+
   log(`Gemini access token refreshed, expires in ${data.expires_in}s`, "gemini");
   return cachedAccessToken;
 }
@@ -418,6 +434,16 @@ export async function getGogCLIStatus(): Promise<{ authenticated: boolean; accou
   } catch {
     return { authenticated: false, accounts: [] };
   }
+}
+
+export async function preloadRefreshToken(): Promise<boolean> {
+  const token = await getRefreshToken();
+  if (token) {
+    log(`Google refresh token loaded on boot (source: ${dbRefreshTokenCache ? "database" : "env/disk"})`, "gemini");
+    return true;
+  }
+  log("No Google refresh token found on boot — Gemini auth requires setup via Integrations", "gemini");
+  return false;
 }
 
 export async function syncGogCLIOnBoot(): Promise<void> {
