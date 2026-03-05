@@ -1219,6 +1219,7 @@ export async function registerRoutes(
         description: description || "",
         order: colCards.length,
         priority: priority || "medium",
+        status: req.body.status || "not_started",
         labels: labels || [],
         createdAt: now,
         updatedAt: now,

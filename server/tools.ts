@@ -3,7 +3,7 @@ import * as path from "path";
 import { exec, execFile } from "child_process";
 import { log } from "./index";
 import { storage } from "./storage";
-import { dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanCards, dbGetKanbanComments, dbAddKanbanComment, dbGetCrmContacts, dbGetCrmContact, dbGetCrmActivities, dbAddCrmActivity, dbGetCrmContactComments, dbAddCrmContactComment, dbUpsertCrmContact } from "./db-persist";
+import { dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanCards, dbGetKanbanComments, dbAddKanbanComment, dbGetKanbanColumns, dbUpsertKanbanCard, dbDeleteKanbanCard, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbGetCrmContacts, dbGetCrmContact, dbGetCrmActivities, dbAddCrmActivity, dbGetCrmContactComments, dbAddCrmContactComment, dbUpsertCrmContact } from "./db-persist";
 import crypto from "crypto";
 
 type EngineFunctions = {
@@ -1388,9 +1388,9 @@ const browserControlTool: NamiTool = {
   },
 };
 
-const kanbanCommentTool: NamiTool = {
-  name: "kanban_comment",
-  description: "Add a comment to a Kanban board card. Use this to post updates, notes, questions, or discussion replies on task cards. Supports listing cards and reading existing comments for context before replying.",
+const kanbanTool: NamiTool = {
+  name: "kanban",
+  description: "Full Kanban board management. Create, update, delete, and move cards. Create, rename, and delete columns. List cards/columns, read and post comments. Use this to manage project tasks on the Kanban board.",
   category: "system",
   enabled: true,
   parameters: {
@@ -1398,12 +1398,39 @@ const kanbanCommentTool: NamiTool = {
     properties: {
       action: {
         type: "string",
-        description: "Action: 'list_cards' (list all kanban cards), 'read_comments' (read comments on a card), 'comment' (add a comment to a card)",
-        enum: ["list_cards", "read_comments", "comment"],
+        description: "Action to perform on the Kanban board",
+        enum: ["list_cards", "list_columns", "create_card", "update_card", "delete_card", "move_card", "create_column", "rename_column", "delete_column", "read_comments", "comment"],
       },
       card_id: {
         type: "string",
-        description: "ID of the kanban card (required for 'read_comments' and 'comment' actions)",
+        description: "ID of the kanban card (required for update_card, delete_card, move_card, read_comments, comment)",
+      },
+      column_id: {
+        type: "string",
+        description: "ID of the column (required for create_card, move_card, rename_column, delete_column)",
+      },
+      title: {
+        type: "string",
+        description: "Title for card or column (required for create_card, create_column)",
+      },
+      description: {
+        type: "string",
+        description: "Description for the card (optional for create_card, update_card)",
+      },
+      priority: {
+        type: "string",
+        description: "Priority level: low, medium, high (optional for create_card, update_card)",
+        enum: ["low", "medium", "high"],
+      },
+      status: {
+        type: "string",
+        description: "Status: not_started, in_progress, blocked, done (optional for create_card, update_card)",
+        enum: ["not_started", "in_progress", "blocked", "done"],
+      },
+      labels: {
+        type: "array",
+        items: { type: "string" },
+        description: "Labels for the card (optional for create_card, update_card)",
       },
       content: {
         type: "string",
@@ -1415,15 +1442,114 @@ const kanbanCommentTool: NamiTool = {
   execute: async (args, agentContext) => {
     const action = args.action as string;
     const cardId = args.card_id as string;
+    const columnId = args.column_id as string;
+    const title = args.title as string;
+    const description = args.description as string | undefined;
+    const priority = args.priority as string | undefined;
+    const status = args.status as string | undefined;
+    const labels = args.labels as string[] | undefined;
     const content = args.content as string;
     const authorName = agentContext?.agentName || "Nami";
     const authorType = (agentContext?.agentRole === "queen" || agentContext?.agentRole === "swarm_queen") ? "queen" : "agent";
 
     try {
+      if (action === "list_columns") {
+        const columns = await dbGetKanbanColumns();
+        if (columns.length === 0) return "No kanban columns found. Create one first with create_column.";
+        return columns.map((c: any) => `- **${c.title}** (ID: ${c.id}) | Order: ${c.order}`).join("\n");
+      }
+
       if (action === "list_cards") {
         const cards = await dbGetKanbanCards();
         if (cards.length === 0) return "No kanban cards found.";
-        return cards.map((c: any) => `- **${c.title}** (${c.id.substring(0, 8)}…)\n  Priority: ${c.priority || "medium"} | Column: ${c.columnId.substring(0, 8)}…\n  ${c.description || "(no description)"}`).join("\n\n");
+        return cards.map((c: any) => `- **${c.title}** (ID: ${c.id})\n  Column: ${c.columnId} | Priority: ${c.priority || "medium"} | Status: ${c.status || "not_started"}\n  ${c.description || "(no description)"}`).join("\n\n");
+      }
+
+      if (action === "create_card") {
+        if (!columnId) return "Error: column_id is required for create_card.";
+        if (!title) return "Error: title is required for create_card.";
+        const cards = await dbGetKanbanCards();
+        const colCards = cards.filter((c: any) => c.columnId === columnId);
+        const now = new Date().toISOString();
+        const card = {
+          id: crypto.randomUUID(),
+          columnId,
+          title,
+          description: description || "",
+          order: colCards.length,
+          priority: priority || "medium",
+          status: status || "not_started",
+          labels: labels || [],
+          createdAt: now,
+          updatedAt: now,
+        };
+        await dbUpsertKanbanCard(card);
+        return `Card created: **${title}** (ID: ${card.id}) in column ${columnId}.`;
+      }
+
+      if (action === "update_card") {
+        if (!cardId) return "Error: card_id is required for update_card.";
+        const cards = await dbGetKanbanCards();
+        const card = cards.find((c: any) => c.id === cardId);
+        if (!card) return `Error: Card ${cardId} not found.`;
+        const updated = {
+          ...card,
+          ...(title !== undefined && { title }),
+          ...(description !== undefined && { description }),
+          ...(priority !== undefined && { priority }),
+          ...(status !== undefined && { status }),
+          ...(labels !== undefined && { labels }),
+          updatedAt: new Date().toISOString(),
+        };
+        await dbUpsertKanbanCard(updated);
+        return `Card updated: **${updated.title}** (ID: ${cardId}).`;
+      }
+
+      if (action === "delete_card") {
+        if (!cardId) return "Error: card_id is required for delete_card.";
+        await dbDeleteKanbanCard(cardId);
+        return `Card ${cardId} deleted.`;
+      }
+
+      if (action === "move_card") {
+        if (!cardId) return "Error: card_id is required for move_card.";
+        if (!columnId) return "Error: column_id is required for move_card.";
+        const cards = await dbGetKanbanCards();
+        const card = cards.find((c: any) => c.id === cardId);
+        if (!card) return `Error: Card ${cardId} not found.`;
+        const targetCards = cards.filter((c: any) => c.columnId === columnId && c.id !== cardId).sort((a: any, b: any) => a.order - b.order);
+        const movedCard = { ...card, columnId, order: targetCards.length, updatedAt: new Date().toISOString() };
+        await dbUpsertKanbanCard(movedCard);
+        return `Card **${card.title}** moved to column ${columnId}.`;
+      }
+
+      if (action === "create_column") {
+        if (!title) return "Error: title is required for create_column.";
+        const columns = await dbGetKanbanColumns();
+        const col = {
+          id: crypto.randomUUID(),
+          title,
+          order: columns.length,
+        };
+        await dbUpsertKanbanColumn(col);
+        return `Column created: **${title}** (ID: ${col.id}).`;
+      }
+
+      if (action === "rename_column") {
+        if (!columnId) return "Error: column_id is required for rename_column.";
+        if (!title) return "Error: title is required for rename_column.";
+        const columns = await dbGetKanbanColumns();
+        const col = columns.find((c: any) => c.id === columnId);
+        if (!col) return `Error: Column ${columnId} not found.`;
+        const updated = { ...col, title };
+        await dbUpsertKanbanColumn(updated);
+        return `Column renamed to **${title}**.`;
+      }
+
+      if (action === "delete_column") {
+        if (!columnId) return "Error: column_id is required for delete_column.";
+        await dbDeleteKanbanColumn(columnId);
+        return `Column ${columnId} deleted.`;
       }
 
       if (action === "read_comments") {
@@ -1448,7 +1574,7 @@ const kanbanCommentTool: NamiTool = {
         return `Comment posted on card ${cardId.substring(0, 8)}… by ${authorName}.`;
       }
 
-      return "Error: Invalid action. Use 'list_cards', 'read_comments', or 'comment'.";
+      return "Error: Invalid action. Use list_cards, list_columns, create_card, update_card, delete_card, move_card, create_column, rename_column, delete_column, read_comments, or comment.";
     } catch (err: any) {
       return `Error: ${err.message}`;
     }
@@ -1599,7 +1725,7 @@ const crmTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool, browserControlTool, kanbanCommentTool, crmTool];
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool, browserControlTool, kanbanTool, crmTool];
 
 export function getTools(): NamiTool[] {
   return allTools;

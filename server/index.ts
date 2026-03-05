@@ -180,6 +180,10 @@ app.use((req, res, next) => {
         const { registerEngine } = await import("./tools");
         const { storage: storageInstance } = await import("./storage");
         await storageInstance.initFromDb();
+
+        const config = await storageInstance.getConfig();
+        const apiKeySource = (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.length > 10) ? "env" : "config";
+        log(`[BOOT] API key source: ${apiKeySource} | Model: ${config.defaultModel} | Provider: ${config.namiProvider || "openrouter"}`);
         registerEngine({
           createSwarmWithQueen: engine.createSwarmWithQueen,
           createSpawn: engine.createSpawn,

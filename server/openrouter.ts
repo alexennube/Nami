@@ -122,7 +122,11 @@ export async function chatCompletion(
   const provider = options.provider || config.namiProvider || "openrouter";
   const client = await createInferenceClient(provider);
 
-  const model = options.model || config.defaultModel;
+  let model = options.model || config.defaultModel;
+  if (provider === "openrouter" && model && !model.includes("/")) {
+    model = `google/${model}`;
+    log(`Auto-prefixed model ID: ${model}`, "openrouter");
+  }
   const temperature = options.temperature ?? config.temperature;
   const maxTokens = options.maxTokens || config.maxTokensPerRequest;
   const useTools = options.useTools ?? false;

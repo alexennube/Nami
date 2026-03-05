@@ -18,6 +18,20 @@ const PRIORITY_COLORS: Record<string, string> = {
   high: "bg-red-500/20 text-red-400 border-red-500/30",
 };
 
+const STATUS_COLORS: Record<string, string> = {
+  not_started: "bg-gray-500/20 text-gray-400 border-gray-500/30",
+  in_progress: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  blocked: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  done: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  not_started: "Not Started",
+  in_progress: "In Progress",
+  blocked: "Blocked",
+  done: "Done",
+};
+
 const AUTHOR_ICONS: Record<string, typeof User> = {
   user: User,
   agent: Bot,
@@ -97,6 +111,11 @@ function CardDetailDialog({ card, open, onClose }: { card: KanbanCard | null; op
             {card.priority && (
               <Badge variant="outline" className={`ml-2 text-[10px] px-1.5 py-0 h-4 ${PRIORITY_COLORS[card.priority] || ""}`}>
                 {card.priority}
+              </Badge>
+            )}
+            {card.status && (
+              <Badge variant="outline" className={`ml-1 text-[10px] px-1.5 py-0 h-4 ${STATUS_COLORS[card.status] || ""}`}>
+                {STATUS_LABELS[card.status] || card.status}
               </Badge>
             )}
           </DialogDescription>
@@ -237,6 +256,11 @@ function CardItem({ card, onEdit, onDelete, onOpenDetail }: { card: KanbanCard; 
             {card.priority}
           </Badge>
         )}
+        {card.status && (
+          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 ${STATUS_COLORS[card.status] || ""}`} data-testid={`card-status-${card.id}`}>
+            {STATUS_LABELS[card.status] || card.status}
+          </Badge>
+        )}
         {card.labels?.map((label) => (
           <Badge key={label} variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-primary/20">
             {label}
@@ -336,6 +360,7 @@ export default function KanbanPage() {
   const [cardTitle, setCardTitle] = useState("");
   const [cardDesc, setCardDesc] = useState("");
   const [cardPriority, setCardPriority] = useState<string>("medium");
+  const [cardStatus, setCardStatus] = useState<string>("not_started");
   const [cardLabels, setCardLabels] = useState("");
   const [columnTitle, setColumnTitle] = useState("");
   const [detailCard, setDetailCard] = useState<KanbanCard | null>(null);
@@ -345,7 +370,7 @@ export default function KanbanPage() {
   });
 
   const createCardMutation = useMutation({
-    mutationFn: async (data: { columnId: string; title: string; description?: string; priority?: string; labels?: string[] }) => {
+    mutationFn: async (data: { columnId: string; title: string; description?: string; priority?: string; status?: string; labels?: string[] }) => {
       const res = await apiRequest("POST", "/api/kanban/cards", data);
       return res.json();
     },
@@ -357,7 +382,7 @@ export default function KanbanPage() {
   });
 
   const updateCardMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: string; title?: string; description?: string; priority?: string; labels?: string[] }) => {
+    mutationFn: async ({ id, ...data }: { id: string; title?: string; description?: string; priority?: string; status?: string; labels?: string[] }) => {
       const res = await apiRequest("PATCH", `/api/kanban/cards/${id}`, data);
       return res.json();
     },
@@ -425,6 +450,7 @@ export default function KanbanPage() {
     setCardTitle("");
     setCardDesc("");
     setCardPriority("medium");
+    setCardStatus("not_started");
     setCardLabels("");
     setCardDialog({ open: true, columnId });
   };
@@ -433,6 +459,7 @@ export default function KanbanPage() {
     setCardTitle(card.title);
     setCardDesc(card.description || "");
     setCardPriority(card.priority || "medium");
+    setCardStatus(card.status || "not_started");
     setCardLabels((card.labels || []).join(", "));
     setCardDialog({ open: true, card });
   };
@@ -441,9 +468,9 @@ export default function KanbanPage() {
     if (!cardTitle.trim()) return;
     const labels = cardLabels.split(",").map(l => l.trim()).filter(Boolean);
     if (cardDialog.card) {
-      updateCardMutation.mutate({ id: cardDialog.card.id, title: cardTitle, description: cardDesc, priority: cardPriority, labels });
+      updateCardMutation.mutate({ id: cardDialog.card.id, title: cardTitle, description: cardDesc, priority: cardPriority, status: cardStatus, labels });
     } else if (cardDialog.columnId) {
-      createCardMutation.mutate({ columnId: cardDialog.columnId, title: cardTitle, description: cardDesc, priority: cardPriority, labels });
+      createCardMutation.mutate({ columnId: cardDialog.columnId, title: cardTitle, description: cardDesc, priority: cardPriority, status: cardStatus, labels });
     }
   };
 
@@ -544,6 +571,17 @@ export default function KanbanPage() {
                 <SelectItem value="low">Low</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="high">High</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={cardStatus} onValueChange={setCardStatus}>
+              <SelectTrigger data-testid="card-status-select">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="not_started">Not Started</SelectItem>
+                <SelectItem value="in_progress">In Progress</SelectItem>
+                <SelectItem value="blocked">Blocked</SelectItem>
+                <SelectItem value="done">Done</SelectItem>
               </SelectContent>
             </Select>
             <Input

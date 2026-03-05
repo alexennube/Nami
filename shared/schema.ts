@@ -335,6 +335,7 @@ export const kanbanCardSchema = z.object({
   description: z.string().optional(),
   order: z.number(),
   priority: z.enum(["low", "medium", "high"]).optional(),
+  status: z.enum(["not_started", "in_progress", "blocked", "done"]).optional(),
   labels: z.array(z.string()).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
