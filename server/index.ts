@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import { randomBytes, createHash } from "crypto";
 
 const app = express();
+app.set("etag", false);
 const httpServer = createServer(app);
 
 declare module "http" {
@@ -88,6 +89,12 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.path.startsWith("/api/")) {
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.set("Pragma", "no-cache");
+    res.set("Expires", "0");
+  }
+
   if (req.path.startsWith("/api/auth/")) {
     return next();
   }

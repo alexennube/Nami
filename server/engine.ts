@@ -765,6 +765,7 @@ You communicate clearly and concisely. When users describe tasks, help them unde
 
 export async function chatWithNami(userMessage: string, sessionId?: string): Promise<{ content: string; tokensUsed: number }> {
   const chatSessionId = sessionId || storage.getActiveChatSessionId();
+  log(`chatWithNami: sessionId=${chatSessionId}, msg="${userMessage.substring(0, 50)}"`, "engine");
 
   await storage.addChatMessage({
     role: "user",
@@ -773,6 +774,7 @@ export async function chatWithNami(userMessage: string, sessionId?: string): Pro
     agentName: null,
     tokensUsed: 0,
     autonomous: false,
+    sessionId: chatSessionId,
   });
 
   const engineState = await storage.getEngineState();
@@ -785,6 +787,7 @@ export async function chatWithNami(userMessage: string, sessionId?: string): Pro
       agentName: "Nami",
       tokensUsed: 0,
       autonomous: false,
+      sessionId: chatSessionId,
     });
     eventBus.broadcast("chat_message", { content: reply, agentName: "Nami", sessionId: chatSessionId, done: true }, "nami");
     return { content: reply, tokensUsed: 0 };
@@ -852,7 +855,11 @@ export async function chatWithNami(userMessage: string, sessionId?: string): Pro
     agentName: "Nami",
     tokensUsed,
     autonomous: false,
+    sessionId: chatSessionId,
   });
+
+  const afterCount = (await storage.getChatHistory(chatSessionId)).length;
+  log(`chatWithNami: response saved, session=${chatSessionId}, msgCount=${afterCount}, content="${content.substring(0, 80)}"`, "engine");
 
   eventBus.broadcast("chat_message", { content, agentName: "Nami", sessionId: chatSessionId, done: true }, "nami");
 
