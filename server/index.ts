@@ -83,6 +83,10 @@ app.get("/api/auth/check", (req: Request, res: Response) => {
 
 export { hashToken };
 
+app.get("/health", (_req: Request, res: Response) => {
+  res.status(200).json({ status: "ok" });
+});
+
 app.use((req: Request, res: Response, next: NextFunction) => {
   if (req.path.startsWith("/api/auth/")) {
     return next();

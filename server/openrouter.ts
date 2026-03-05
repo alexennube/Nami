@@ -122,6 +122,7 @@ export async function chatCompletion(
   const provider = options.provider || config.namiProvider || "openrouter";
   const client = await createInferenceClient(provider);
 
+  const FALLBACK_MODEL = "google/gemini-2.5-flash";
   let model = options.model || config.defaultModel;
   if (provider === "openrouter" && model && !model.includes("/")) {
     model = `google/${model}`;
@@ -246,6 +247,11 @@ export async function chatCompletion(
       toolCalls: allToolCalls.length > 0 ? allToolCalls : undefined,
     };
   } catch (error: any) {
+    const isInvalidModel = error.message?.includes("not a valid model") || (error.status === 400 && error.message?.includes("model"));
+    if (isInvalidModel && model !== FALLBACK_MODEL && provider === "openrouter") {
+      log(`Model ${model} invalid, retrying with fallback ${FALLBACK_MODEL}`, "openrouter");
+      return chatCompletion(messages, { ...options, model: FALLBACK_MODEL });
+    }
     log(`${provider} error: ${error.message}`, "openrouter");
     throw new Error(`${provider} API error: ${error.message}`);
   }
