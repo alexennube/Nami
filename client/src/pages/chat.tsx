@@ -67,19 +67,25 @@ export default function Chat() {
   });
 
   useEffect(() => {
-    if (waitingForReply && messages.length > messageCountRef.current) {
-      const lastMsg = messages[messages.length - 1];
-      if (lastMsg && lastMsg.role === "assistant") {
-        setWaitingForReply(false);
-        setStreamStatus(null);
-      }
+    if (!waitingForReply) return;
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg && lastMsg.role === "assistant" && !lastMsg.id?.startsWith("optimistic-")) {
+      setWaitingForReply(false);
+      setStreamStatus(null);
     }
   }, [messages, waitingForReply]);
 
   useEffect(() => {
     const unsub = namiWs.subscribe((event: NamiEvent) => {
       if (event.type === "chat_message") {
-        queryClient.invalidateQueries({ queryKey: ["/api/chat", activeSessionId] });
+        const cm = event.payload as any;
+        if (!cm.sessionId || cm.sessionId === activeSessionId) {
+          queryClient.invalidateQueries({ queryKey: ["/api/chat", activeSessionId] });
+          if (cm.done) {
+            setWaitingForReply(false);
+            setStreamStatus(null);
+          }
+        }
         return;
       }
       if (event.type !== "chat_stream") return;
