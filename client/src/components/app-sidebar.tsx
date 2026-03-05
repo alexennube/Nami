@@ -36,6 +36,7 @@ import {
   DollarSign,
   FileText,
   FolderOpen,
+  Columns3,
 } from "lucide-react";
 import { useState } from "react";
 import type { EngineStatus } from "@shared/schema";
@@ -286,6 +287,14 @@ export function AppSidebar() {
                   <Link href="/files" data-testid="link-files">
                     <FolderOpen className="w-4 h-4" />
                     <span>Files</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location === "/kanban"} className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
+                  <Link href="/kanban" data-testid="link-kanban">
+                    <Columns3 className="w-4 h-4" />
+                    <span>Kanban</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
