@@ -3,7 +3,8 @@ import * as path from "path";
 import { exec, execFile } from "child_process";
 import { log } from "./index";
 import { storage } from "./storage";
-import { dbSaveWorkspaceFile, dbDeleteWorkspaceFile } from "./db-persist";
+import { dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanCards, dbGetKanbanComments, dbAddKanbanComment } from "./db-persist";
+import crypto from "crypto";
 
 type EngineFunctions = {
   createSwarmWithQueen: (data: { name: string; goal: string; objective: string; maxCycles?: number }) => Promise<any>;
@@ -43,7 +44,7 @@ export interface NamiTool {
     properties: Record<string, ToolParameter>;
     required: string[];
   };
-  execute: (args: Record<string, any>) => Promise<string>;
+  execute: (args: Record<string, any>, agentContext?: { agentName?: string; agentRole?: string }) => Promise<string>;
 }
 
 export interface ToolPermissions {
@@ -1387,7 +1388,74 @@ const browserControlTool: NamiTool = {
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool, browserControlTool];
+const kanbanCommentTool: NamiTool = {
+  name: "kanban_comment",
+  description: "Add a comment to a Kanban board card. Use this to post updates, notes, questions, or discussion replies on task cards. Supports listing cards and reading existing comments for context before replying.",
+  category: "system",
+  enabled: true,
+  parameters: {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        description: "Action: 'list_cards' (list all kanban cards), 'read_comments' (read comments on a card), 'comment' (add a comment to a card)",
+        enum: ["list_cards", "read_comments", "comment"],
+      },
+      card_id: {
+        type: "string",
+        description: "ID of the kanban card (required for 'read_comments' and 'comment' actions)",
+      },
+      content: {
+        type: "string",
+        description: "Comment text to post (required for 'comment' action). Supports markdown.",
+      },
+    },
+    required: ["action"],
+  },
+  execute: async (args, agentContext) => {
+    const action = args.action as string;
+    const cardId = args.card_id as string;
+    const content = args.content as string;
+    const authorName = agentContext?.agentName || "Nami";
+    const authorType = (agentContext?.agentRole === "queen" || agentContext?.agentRole === "swarm_queen") ? "queen" : "agent";
+
+    try {
+      if (action === "list_cards") {
+        const cards = await dbGetKanbanCards();
+        if (cards.length === 0) return "No kanban cards found.";
+        return cards.map((c: any) => `- **${c.title}** (${c.id.substring(0, 8)}…)\n  Priority: ${c.priority || "medium"} | Column: ${c.columnId.substring(0, 8)}…\n  ${c.description || "(no description)"}`).join("\n\n");
+      }
+
+      if (action === "read_comments") {
+        if (!cardId) return "Error: card_id is required for read_comments.";
+        const comments = await dbGetKanbanComments(cardId);
+        if (comments.length === 0) return "No comments on this card yet.";
+        return comments.map((c: any) => `**${c.author}** (${c.authorType}) — ${new Date(c.createdAt).toLocaleString()}:\n${c.content}`).join("\n\n---\n\n");
+      }
+
+      if (action === "comment") {
+        if (!cardId) return "Error: card_id is required for comment.";
+        if (!content) return "Error: content is required for comment.";
+        const comment = {
+          id: crypto.randomUUID(),
+          cardId,
+          author: authorName,
+          authorType,
+          content,
+          createdAt: new Date().toISOString(),
+        };
+        await dbAddKanbanComment(comment);
+        return `Comment posted on card ${cardId.substring(0, 8)}… by ${authorName}.`;
+      }
+
+      return "Error: Invalid action. Use 'list_cards', 'read_comments', or 'comment'.";
+    } catch (err: any) {
+      return `Error: ${err.message}`;
+    }
+  },
+};
+
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool, browserControlTool, kanbanCommentTool];
 
 export function getTools(): NamiTool[] {
   return allTools;
@@ -1419,8 +1487,7 @@ export function getToolsForLLM(): Array<{ type: "function"; function: { name: st
   }));
 }
 
-export async function executeToolCall(name: string, args: Record<string, any>): Promise<string> {
-  // Defensive validation - ensure name is not empty or invalid
+export async function executeToolCall(name: string, args: Record<string, any>, agentContext?: { agentName?: string; agentRole?: string }): Promise<string> {
   if (!name || typeof name !== 'string' || name.trim() === '') {
     return `Error: Invalid tool name provided. Tool name must be a non-empty string.`;
   }
@@ -1437,7 +1504,7 @@ export async function executeToolCall(name: string, args: Record<string, any>): 
   log(`Executing tool: ${name}(${JSON.stringify(args).substring(0, 100)})`, "tools");
 
   try {
-    const result = await tool.execute(args);
+    const result = await tool.execute(args, agentContext);
     return result;
   } catch (err: any) {
     log(`Tool ${name} execution failed: ${err.message}`, "tools");

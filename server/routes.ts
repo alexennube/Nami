@@ -10,7 +10,7 @@ import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCode
 import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions } from "./tools";
-import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount, dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanColumns, dbGetKanbanCards, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbUpsertKanbanCard, dbDeleteKanbanCard, dbSaveKanbanBoard } from "./db-persist";
+import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount, dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanColumns, dbGetKanbanCards, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbUpsertKanbanCard, dbDeleteKanbanCard, dbSaveKanbanBoard, dbGetKanbanComments, dbAddKanbanComment, dbDeleteKanbanComment, dbDeleteKanbanCommentsByCard } from "./db-persist";
 import crypto from "crypto";
 import { engineMind } from "./engine-mind";
 
@@ -1245,7 +1245,51 @@ export async function registerRoutes(
 
   app.delete("/api/kanban/cards/:id", async (req, res) => {
     try {
+      await dbDeleteKanbanCommentsByCard(req.params.id);
       await dbDeleteKanbanCard(req.params.id);
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/kanban/cards/:id/comments", async (req, res) => {
+    try {
+      const comments = await dbGetKanbanComments(req.params.id);
+      res.json(comments);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/kanban/cards/:id/comments", async (req, res) => {
+    try {
+      const { author, authorType, content } = req.body;
+      if (!content || !author) return res.status(400).json({ error: "author and content required" });
+      const validTypes = ["user", "agent", "queen"];
+      const safeAuthorType = validTypes.includes(authorType) ? authorType : "user";
+      const cards = await dbGetKanbanCards();
+      if (!cards.find((c: any) => c.id === req.params.id)) {
+        return res.status(404).json({ error: "Card not found" });
+      }
+      const comment = {
+        id: crypto.randomUUID(),
+        cardId: req.params.id,
+        author: String(author).substring(0, 100),
+        authorType: safeAuthorType,
+        content: String(content).substring(0, 10000),
+        createdAt: new Date().toISOString(),
+      };
+      await dbAddKanbanComment(comment);
+      res.json(comment);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/kanban/comments/:id", async (req, res) => {
+    try {
+      await dbDeleteKanbanComment(req.params.id);
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

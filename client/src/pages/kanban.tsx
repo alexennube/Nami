@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,9 +8,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, GripVertical, Trash2, Pencil, X, MoreHorizontal, Columns3 } from "lucide-react";
+import { Plus, GripVertical, Trash2, Pencil, X, MoreHorizontal, Columns3, MessageSquare, Send, Crown, Bot, User } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import type { KanbanColumn, KanbanCard, KanbanBoard } from "@shared/schema";
+import type { KanbanColumn, KanbanCard, KanbanBoard, KanbanComment } from "@shared/schema";
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -18,7 +18,178 @@ const PRIORITY_COLORS: Record<string, string> = {
   high: "bg-red-500/20 text-red-400 border-red-500/30",
 };
 
-function CardItem({ card, onEdit, onDelete }: { card: KanbanCard; onEdit: (card: KanbanCard) => void; onDelete: (id: string) => void }) {
+const AUTHOR_ICONS: Record<string, typeof User> = {
+  user: User,
+  agent: Bot,
+  queen: Crown,
+};
+
+const AUTHOR_COLORS: Record<string, string> = {
+  user: "text-emerald-400",
+  agent: "text-blue-400",
+  queen: "text-purple-400",
+};
+
+function CardDetailDialog({ card, open, onClose }: { card: KanbanCard | null; open: boolean; onClose: () => void }) {
+  const { toast } = useToast();
+  const [newComment, setNewComment] = useState("");
+  const commentsEndRef = useRef<HTMLDivElement>(null);
+
+  const { data: comments = [], isLoading: commentsLoading } = useQuery<KanbanComment[]>({
+    queryKey: ["/api/kanban/cards", card?.id, "comments"],
+    queryFn: async () => {
+      if (!card) return [];
+      const res = await fetch(`/api/kanban/cards/${card.id}/comments`);
+      return res.json();
+    },
+    enabled: !!card && open,
+    refetchInterval: open ? 5000 : false,
+  });
+
+  const addCommentMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await apiRequest("POST", `/api/kanban/cards/${card!.id}/comments`, {
+        author: "You",
+        authorType: "user",
+        content,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/kanban/cards", card?.id, "comments"] });
+      setNewComment("");
+    },
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: async (commentId: string) => {
+      await apiRequest("DELETE", `/api/kanban/comments/${commentId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/kanban/cards", card?.id, "comments"] });
+      toast({ title: "Comment deleted" });
+    },
+  });
+
+  useEffect(() => {
+    if (commentsEndRef.current) {
+      commentsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [comments.length]);
+
+  const handleSubmit = () => {
+    if (!newComment.trim()) return;
+    addCommentMutation.mutate(newComment.trim());
+  };
+
+  if (!card) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-primary" />
+            {card.title}
+          </DialogTitle>
+          <DialogDescription className="text-xs">
+            {card.description || "No description"}
+            {card.priority && (
+              <Badge variant="outline" className={`ml-2 text-[10px] px-1.5 py-0 h-4 ${PRIORITY_COLORS[card.priority] || ""}`}>
+                {card.priority}
+              </Badge>
+            )}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 flex flex-col border rounded-md bg-muted/20">
+          <div className="px-3 py-2 border-b flex items-center gap-2">
+            <MessageSquare className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-xs font-medium text-muted-foreground">Discussion</span>
+            <Badge variant="secondary" className="text-[10px] px-1.5 h-4">{comments.length}</Badge>
+          </div>
+
+          <ScrollArea className="flex-1 max-h-[40vh]">
+            <div className="p-3 space-y-3">
+              {commentsLoading ? (
+                <p className="text-xs text-muted-foreground text-center py-4">Loading comments...</p>
+              ) : comments.length === 0 ? (
+                <p className="text-xs text-muted-foreground text-center py-6">
+                  No comments yet. Start the discussion or agents will post updates here.
+                </p>
+              ) : (
+                comments.map((comment) => {
+                  const AuthorIcon = AUTHOR_ICONS[comment.authorType] || User;
+                  const authorColor = AUTHOR_COLORS[comment.authorType] || "text-muted-foreground";
+                  return (
+                    <div key={comment.id} className="group flex gap-2" data-testid={`comment-${comment.id}`}>
+                      <div className={`flex items-center justify-center w-6 h-6 rounded-full shrink-0 mt-0.5 ${
+                        comment.authorType === "queen" ? "bg-purple-500/20" :
+                        comment.authorType === "agent" ? "bg-blue-500/20" :
+                        "bg-emerald-500/20"
+                      }`}>
+                        <AuthorIcon className={`w-3 h-3 ${authorColor}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[11px] font-medium ${authorColor}`}>{comment.author}</span>
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 h-3.5">{comment.authorType}</Badge>
+                          <span className="text-[9px] text-muted-foreground">
+                            {new Date(comment.createdAt).toLocaleString()}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity ml-auto shrink-0"
+                            onClick={() => deleteCommentMutation.mutate(comment.id)}
+                            data-testid={`comment-delete-${comment.id}`}
+                          >
+                            <Trash2 className="w-2.5 h-2.5 text-muted-foreground hover:text-red-400" />
+                          </Button>
+                        </div>
+                        <p className="text-xs text-foreground mt-0.5 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                          {comment.content}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+              <div ref={commentsEndRef} />
+            </div>
+          </ScrollArea>
+
+          <div className="p-2 border-t flex items-end gap-2">
+            <textarea
+              placeholder="Add a comment..."
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              className="flex-1 min-h-[36px] max-h-[100px] px-2.5 py-1.5 text-xs bg-background border border-border rounded-md resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+              data-testid="comment-input"
+            />
+            <Button
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={handleSubmit}
+              disabled={!newComment.trim() || addCommentMutation.isPending}
+              data-testid="comment-send-btn"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CardItem({ card, onEdit, onDelete, onOpenDetail }: { card: KanbanCard; onEdit: (card: KanbanCard) => void; onDelete: (id: string) => void; onOpenDetail: (card: KanbanCard) => void }) {
   const [dragging, setDragging] = useState(false);
 
   return (
@@ -30,6 +201,7 @@ function CardItem({ card, onEdit, onDelete }: { card: KanbanCard; onEdit: (card:
         setDragging(true);
       }}
       onDragEnd={() => setDragging(false)}
+      onClick={() => onOpenDetail(card)}
       className={`bg-background border border-border rounded-md p-3 cursor-grab active:cursor-grabbing transition-opacity ${dragging ? "opacity-40" : "opacity-100"}`}
       data-testid={`card-${card.id}`}
     >
@@ -42,15 +214,18 @@ function CardItem({ card, onEdit, onDelete }: { card: KanbanCard; onEdit: (card:
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" data-testid={`card-menu-${card.id}`}>
+            <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={(e) => e.stopPropagation()} data-testid={`card-menu-${card.id}`}>
               <MoreHorizontal className="w-3 h-3" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => onEdit(card)} data-testid={`card-edit-${card.id}`}>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit(card); }} data-testid={`card-edit-${card.id}`}>
               <Pencil className="w-3 h-3 mr-2" /> Edit
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-red-400" onClick={() => onDelete(card.id)} data-testid={`card-delete-${card.id}`}>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onOpenDetail(card); }} data-testid={`card-comments-${card.id}`}>
+              <MessageSquare className="w-3 h-3 mr-2" /> Comments
+            </DropdownMenuItem>
+            <DropdownMenuItem className="text-red-400" onClick={(e) => { e.stopPropagation(); onDelete(card.id); }} data-testid={`card-delete-${card.id}`}>
               <Trash2 className="w-3 h-3 mr-2" /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -67,6 +242,9 @@ function CardItem({ card, onEdit, onDelete }: { card: KanbanCard; onEdit: (card:
             {label}
           </Badge>
         ))}
+        <div className="ml-auto flex items-center gap-0.5 text-muted-foreground">
+          <MessageSquare className="w-3 h-3" />
+        </div>
       </div>
     </div>
   );
@@ -81,6 +259,7 @@ function ColumnComponent({
   onMoveCard,
   onEditColumn,
   onDeleteColumn,
+  onOpenDetail,
 }: {
   column: KanbanColumn;
   cards: KanbanCard[];
@@ -90,6 +269,7 @@ function ColumnComponent({
   onMoveCard: (cardId: string, targetColumnId: string, order: number) => void;
   onEditColumn: (column: KanbanColumn) => void;
   onDeleteColumn: (id: string) => void;
+  onOpenDetail: (card: KanbanCard) => void;
 }) {
   const [dragOver, setDragOver] = useState(false);
 
@@ -136,7 +316,7 @@ function ColumnComponent({
       <ScrollArea className="flex-1 max-h-[calc(100vh-220px)]">
         <div className="p-2 space-y-2">
           {cards.sort((a, b) => a.order - b.order).map((card) => (
-            <CardItem key={card.id} card={card} onEdit={onEditCard} onDelete={onDeleteCard} />
+            <CardItem key={card.id} card={card} onEdit={onEditCard} onDelete={onDeleteCard} onOpenDetail={onOpenDetail} />
           ))}
           {cards.length === 0 && (
             <div className="text-center py-8 text-xs text-muted-foreground">
@@ -158,6 +338,7 @@ export default function KanbanPage() {
   const [cardPriority, setCardPriority] = useState<string>("medium");
   const [cardLabels, setCardLabels] = useState("");
   const [columnTitle, setColumnTitle] = useState("");
+  const [detailCard, setDetailCard] = useState<KanbanCard | null>(null);
 
   const { data: board, isLoading } = useQuery<KanbanBoard>({
     queryKey: ["/api/kanban"],
@@ -319,6 +500,7 @@ export default function KanbanPage() {
                 onMoveCard={(cardId, targetColumnId, order) => moveCardMutation.mutate({ cardId, columnId: targetColumnId, order })}
                 onEditColumn={openEditColumn}
                 onDeleteColumn={(id) => deleteColumnMutation.mutate(id)}
+                onOpenDetail={(card) => setDetailCard(card)}
               />
             ))}
             {columns.length === 0 && (
@@ -403,6 +585,12 @@ export default function KanbanPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CardDetailDialog
+        card={detailCard}
+        open={!!detailCard}
+        onClose={() => setDetailCard(null)}
+      />
     </div>
   );
 }

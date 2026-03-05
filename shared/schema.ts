@@ -347,5 +347,15 @@ export const kanbanBoardSchema = z.object({
 });
 export type KanbanBoard = z.infer<typeof kanbanBoardSchema>;
 
+export const kanbanCommentSchema = z.object({
+  id: z.string(),
+  cardId: z.string(),
+  author: z.string(),
+  authorType: z.enum(["user", "agent", "queen"]),
+  content: z.string(),
+  createdAt: z.string(),
+});
+export type KanbanComment = z.infer<typeof kanbanCommentSchema>;
+
 export type User = { id: string; username: string; password: string };
 export type InsertUser = { username: string; password: string };

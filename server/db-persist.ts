@@ -116,6 +116,14 @@ async function ensureTables(): Promise<void> {
     )
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_kanban_comments (
+      id TEXT PRIMARY KEY,
+      card_id TEXT NOT NULL,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS nami_google_accounts (
       id TEXT PRIMARY KEY,
       email TEXT UNIQUE NOT NULL,
@@ -352,8 +360,13 @@ export async function dbUpsertKanbanColumn(col: any): Promise<void> {
 
 export async function dbDeleteKanbanColumn(id: string): Promise<void> {
   await init();
-  await pool.query("DELETE FROM nami_kanban_columns WHERE id = $1", [id]);
+  const cardsResult = await pool.query("SELECT id FROM nami_kanban_cards WHERE column_id = $1", [id]);
+  const cardIds = cardsResult.rows.map(r => r.id);
+  if (cardIds.length > 0) {
+    await pool.query("DELETE FROM nami_kanban_comments WHERE card_id = ANY($1::text[])", [cardIds]);
+  }
   await pool.query("DELETE FROM nami_kanban_cards WHERE column_id = $1", [id]);
+  await pool.query("DELETE FROM nami_kanban_columns WHERE id = $1", [id]);
 }
 
 export async function dbGetKanbanCards(): Promise<any[]> {
@@ -374,6 +387,30 @@ export async function dbUpsertKanbanCard(card: any): Promise<void> {
 export async function dbDeleteKanbanCard(id: string): Promise<void> {
   await init();
   await pool.query("DELETE FROM nami_kanban_cards WHERE id = $1", [id]);
+}
+
+export async function dbGetKanbanComments(cardId: string): Promise<any[]> {
+  await init();
+  const result = await pool.query("SELECT data FROM nami_kanban_comments WHERE card_id = $1 ORDER BY created_at ASC", [cardId]);
+  return result.rows.map(r => r.data);
+}
+
+export async function dbAddKanbanComment(comment: any): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_kanban_comments (id, card_id, data, created_at) VALUES ($1, $2, $3::jsonb, NOW())`,
+    [comment.id, comment.cardId, JSON.stringify(comment)]
+  );
+}
+
+export async function dbDeleteKanbanComment(id: string): Promise<void> {
+  await init();
+  await pool.query("DELETE FROM nami_kanban_comments WHERE id = $1", [id]);
+}
+
+export async function dbDeleteKanbanCommentsByCard(cardId: string): Promise<void> {
+  await init();
+  await pool.query("DELETE FROM nami_kanban_comments WHERE card_id = $1", [cardId]);
 }
 
 export async function dbSaveKanbanBoard(columns: any[], cards: any[]): Promise<void> {
