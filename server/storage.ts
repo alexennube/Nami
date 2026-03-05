@@ -174,7 +174,7 @@ export class MemStorage implements IStorage {
     };
 
     this.config = loadJson<NamiConfig>(CONFIG_FILE, defaultConfig);
-    if (!this.config.openRouterApiKey && process.env.OPENROUTER_API_KEY) {
+    if (process.env.OPENROUTER_API_KEY) {
       this.config.openRouterApiKey = process.env.OPENROUTER_API_KEY;
     }
 
@@ -258,7 +258,7 @@ export class MemStorage implements IStorage {
       const dbConfig = await dbGet<NamiConfig>("config");
       if (dbConfig) {
         this.config = { ...this.config, ...dbConfig };
-        if (!this.config.openRouterApiKey && process.env.OPENROUTER_API_KEY) {
+        if (process.env.OPENROUTER_API_KEY) {
           this.config.openRouterApiKey = process.env.OPENROUTER_API_KEY;
         }
       } else {

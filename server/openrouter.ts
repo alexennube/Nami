@@ -36,9 +36,9 @@ export interface ChatOptions {
 
 export async function getApiKey(): Promise<string> {
   const config = await storage.getConfig();
-  const configKey = config.openRouterApiKey;
   const envKey = process.env.OPENROUTER_API_KEY;
-  const key = (configKey && configKey !== "sk-or-v1-****" && configKey.length > 10) ? configKey : envKey;
+  const configKey = config.openRouterApiKey;
+  const key = (envKey && envKey.length > 10) ? envKey : (configKey && configKey !== "sk-or-v1-****" && configKey.length > 10) ? configKey : undefined;
   if (!key) {
     throw new Error("OpenRouter API key not configured. Set it in Settings or as OPENROUTER_API_KEY environment variable.");
   }
