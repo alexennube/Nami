@@ -37,6 +37,7 @@ import {
   FileText,
   FolderOpen,
   Columns3,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
 import type { EngineStatus } from "@shared/schema";
@@ -295,6 +296,14 @@ export function AppSidebar() {
                   <Link href="/kanban" data-testid="link-kanban">
                     <Columns3 className="w-4 h-4" />
                     <span>Kanban</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild data-active={location.startsWith("/crm")} className="data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground">
+                  <Link href="/crm" data-testid="link-crm">
+                    <Users className="w-4 h-4" />
+                    <span>CRM</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
