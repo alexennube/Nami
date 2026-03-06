@@ -233,6 +233,14 @@ export async function bootEngine(): Promise<void> {
 
   startScheduleChecker();
 
+  try {
+    const { startSequenceEngine } = await import("./routes");
+    startSequenceEngine();
+    log("Sequence execution engine started on boot", "engine");
+  } catch (err: any) {
+    log(`Sequence engine boot error: ${err.message}`, "engine");
+  }
+
   engineMind.initialize().then(ok => {
     if (ok) log("Engine Mind (Pi) initialized on boot", "engine");
   }).catch(err => log(`Engine Mind boot error: ${err.message}`, "engine"));

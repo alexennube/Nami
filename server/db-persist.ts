@@ -589,4 +589,13 @@ export async function dbDeleteCrmSequence(id: string): Promise<void> {
   await pool.query("DELETE FROM nami_crm_sequences WHERE id = $1", [id]);
 }
 
+export async function dbGetCrmSequencesByAccount(accountId: string): Promise<any[]> {
+  await init();
+  const result = await pool.query(
+    "SELECT data FROM nami_crm_sequences WHERE data->>'accountId' = $1 ORDER BY created_at DESC",
+    [accountId]
+  );
+  return result.rows.map((r: any) => r.data);
+}
+
 export { pool, init as dbInit };

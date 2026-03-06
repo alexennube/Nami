@@ -31,6 +31,8 @@ import KanbanPage from "@/pages/kanban";
 import CrmPage from "@/pages/crm";
 import ContactDetail from "@/pages/contact-detail";
 import AccountDetail from "@/pages/account-detail";
+import SequencesPage from "@/pages/sequences";
+import SequenceDetail from "@/pages/sequence-detail";
 
 function Router() {
   return (
@@ -53,6 +55,8 @@ function Router() {
       <Route path="/crm" component={CrmPage} />
       <Route path="/crm/accounts/:id" component={AccountDetail} />
       <Route path="/crm/contacts/:id" component={ContactDetail} />
+      <Route path="/crm/sequences" component={SequencesPage} />
+      <Route path="/crm/sequences/:id" component={SequenceDetail} />
       <Route path="/activity" component={Activity} />
       <Route path="/integrations" component={Integrations} />
       <Route path="/settings" component={Settings} />

@@ -12,9 +12,9 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   ArrowLeft, Mail, Phone, Building2, Globe, MessageSquare, Activity,
   Send, Trash2, Crown, Bot, User, Linkedin, Twitter, Tag, MapPin,
-  Clock, FileText, Search as SearchIcon, Eye, Zap, Users
+  Clock, FileText, Search as SearchIcon, Eye, Zap, Users, Brain, RefreshCw, Target, MessageCircle
 } from "lucide-react";
-import type { CrmContact, CrmContactComment, CrmActivity, CrmAccount } from "@shared/schema";
+import type { CrmContact, CrmContactComment, CrmActivity, CrmAccount, ContactIntelligence } from "@shared/schema";
 
 const STAGE_COLORS: Record<string, string> = {
   lead: "bg-gray-500/20 text-gray-400 border-gray-500/30",
@@ -77,6 +77,17 @@ export default function ContactDetail() {
     queryKey: ["/api/crm/contacts", contactId, "activities"],
     queryFn: async () => { const res = await fetch(`/api/crm/contacts/${contactId}/activities`); return res.json(); },
     refetchInterval: 5000,
+  });
+
+  const analyzeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/crm/contacts/${contactId}/analyze`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/crm/contacts", contactId] });
+      toast({ title: "Intelligence report generated" });
+    },
   });
 
   const addCommentMutation = useMutation({
@@ -229,7 +240,7 @@ export default function ContactDetail() {
                     <Zap className="w-3 h-3 text-indigo-400" />
                     <span className="text-xs">Step {(contact.sequenceStep || 0) + 1}</span>
                     <Link href="/crm/sequences">
-                      <Button variant="link" size="sm" className="h-auto p-0 text-[10px]">View</Button>
+                      <Button variant="ghost" size="sm" className="h-auto p-0 text-[10px] text-primary hover:underline">View</Button>
                     </Link>
                   </div>
                 </div>
@@ -256,6 +267,9 @@ export default function ContactDetail() {
                 </TabsTrigger>
                 <TabsTrigger value="comments" className="text-xs h-7" data-testid="tab-comments">
                   <MessageSquare className="w-3.5 h-3.5 mr-1" /> Comments ({comments.length})
+                </TabsTrigger>
+                <TabsTrigger value="intelligence" className="text-xs h-7" data-testid="tab-intelligence">
+                  <Brain className="w-3.5 h-3.5 mr-1" /> Intelligence
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -364,6 +378,104 @@ export default function ContactDetail() {
                   <Send className="w-3.5 h-3.5" />
                 </Button>
               </div>
+            </TabsContent>
+
+            <TabsContent value="intelligence" className="flex-1 min-h-0 mt-0">
+              <ScrollArea className="h-full">
+                <div className="p-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-semibold flex items-center gap-1.5">
+                      <Brain className="w-3.5 h-3.5 text-indigo-400" />
+                      Contact Intelligence Report
+                    </h3>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => analyzeMutation.mutate()}
+                      disabled={analyzeMutation.isPending}
+                      data-testid="analyze-btn"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${analyzeMutation.isPending ? "animate-spin" : ""}`} />
+                      {contact.contactIntelligence ? "Re-analyze" : "Analyze Contact"}
+                    </Button>
+                  </div>
+
+                  {!contact.contactIntelligence ? (
+                    <div className="text-center py-12">
+                      <Brain className="w-8 h-8 text-muted-foreground/20 mx-auto mb-2" />
+                      <p className="text-xs text-muted-foreground">No intelligence report yet. Click "Analyze Contact" to generate one.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-[10px] text-muted-foreground">
+                        Analyzed: {new Date(contact.contactIntelligence.analyzedAt).toLocaleString()}
+                      </p>
+
+                      <div className="border border-border rounded-lg p-3">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Summary</span>
+                        <p className="text-xs mt-1" data-testid="intel-summary">{contact.contactIntelligence.summary}</p>
+                      </div>
+
+                      <div className="border border-border rounded-lg p-3">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                          <Target className="w-2.5 h-2.5" /> Recommended Channels
+                        </span>
+                        <div className="flex flex-wrap gap-1.5 mt-1.5">
+                          {contact.contactIntelligence.recommendedChannels.map((ch: string) => (
+                            <Badge key={ch} variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-primary/10 text-primary border-primary/20">
+                              {ch}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="border border-border rounded-lg p-3">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                          <MessageCircle className="w-2.5 h-2.5" /> Messaging Approach
+                        </span>
+                        <p className="text-xs mt-1" data-testid="intel-messaging">{contact.contactIntelligence.messagingApproach}</p>
+                      </div>
+
+                      <div className="border border-border rounded-lg p-3">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Online Footprint</span>
+                        <p className="text-xs mt-1 text-muted-foreground" data-testid="intel-footprint">{contact.contactIntelligence.onlineFootprint}</p>
+                      </div>
+
+                      <div className="border border-border rounded-lg p-3">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Pain Points</span>
+                        <ul className="mt-1.5 space-y-1">
+                          {contact.contactIntelligence.painPoints.map((p: string, i: number) => (
+                            <li key={i} className="text-xs flex items-start gap-1.5">
+                              <span className="text-primary mt-0.5">•</span>
+                              {p}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+
+                      <div className="border border-border rounded-lg p-3">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1">
+                          <Clock className="w-2.5 h-2.5" /> Outreach Timing
+                        </span>
+                        <p className="text-xs mt-1" data-testid="intel-timing">{contact.contactIntelligence.outreachTiming}</p>
+                      </div>
+
+                      <div className="border border-border rounded-lg p-3">
+                        <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Talking Points</span>
+                        <ul className="mt-1.5 space-y-1">
+                          {contact.contactIntelligence.talkingPoints.map((p: string, i: number) => (
+                            <li key={i} className="text-xs flex items-start gap-1.5">
+                              <span className="text-primary mt-0.5">•</span>
+                              {p}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </ScrollArea>
             </TabsContent>
           </Tabs>
         </div>

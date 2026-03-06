@@ -9,9 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Building2, Users, Search, Globe, Mail, Phone, Tag } from "lucide-react";
+import { Plus, Building2, Users, Search, Globe, Mail, Phone, Tag, Zap } from "lucide-react";
 import { ConfigurableTable, type ColumnDef } from "@/components/configurable-table";
-import type { CrmAccount, CrmContact } from "@shared/schema";
+import type { CrmAccount, CrmContact, CrmSequence } from "@shared/schema";
 
 const STAGE_COLORS: Record<string, string> = {
   lead: "bg-gray-500/20 text-gray-400 border-gray-500/30",
@@ -178,6 +178,7 @@ export default function CrmPage() {
 
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<CrmAccount[]>({ queryKey: ["/api/crm/accounts"] });
   const { data: contacts = [], isLoading: contactsLoading } = useQuery<CrmContact[]>({ queryKey: ["/api/crm/contacts"] });
+  const { data: sequences = [], isLoading: sequencesLoading } = useQuery<CrmSequence[]>({ queryKey: ["/api/crm/sequences"] });
 
   const deleteAccountMutation = useMutation({
     mutationFn: async (id: string) => { await apiRequest("DELETE", `/api/crm/accounts/${id}`); },
@@ -377,14 +378,21 @@ export default function CrmPage() {
             <TabsTrigger value="contacts" className="text-xs h-7" data-testid="tab-contacts">
               <Users className="w-3.5 h-3.5 mr-1" /> Contacts
             </TabsTrigger>
+            <TabsTrigger value="sequences" className="text-xs h-7" data-testid="tab-sequences">
+              <Zap className="w-3.5 h-3.5 mr-1" /> Sequences
+            </TabsTrigger>
           </TabsList>
           <Button
             size="sm"
             className="h-7 text-xs"
-            onClick={() => activeTab === "contacts" ? setContactDialog({ open: true }) : setAccountDialog({ open: true })}
+            onClick={() => {
+              if (activeTab === "sequences") navigate("/crm/sequences");
+              else if (activeTab === "contacts") setContactDialog({ open: true });
+              else setAccountDialog({ open: true });
+            }}
             data-testid="crm-add-btn"
           >
-            <Plus className="w-3.5 h-3.5 mr-1" /> Add {activeTab === "contacts" ? "Contact" : "Account"}
+            <Plus className="w-3.5 h-3.5 mr-1" /> {activeTab === "sequences" ? "View All" : activeTab === "contacts" ? "Add Contact" : "Add Account"}
           </Button>
         </div>
 
@@ -416,6 +424,61 @@ export default function CrmPage() {
             onEdit={(c) => setContactDialog({ open: true, contact: c })}
             onDelete={(c) => deleteContactMutation.mutate(c.id)}
           />
+        </TabsContent>
+
+        <TabsContent value="sequences" className="flex-1 min-h-0 mt-0 px-4 pb-4 pt-2">
+          {sequencesLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <p className="text-sm text-muted-foreground">Loading sequences...</p>
+            </div>
+          ) : sequences.length === 0 ? (
+            <div className="text-center py-12">
+              <Zap className="w-10 h-10 text-muted-foreground/20 mx-auto" />
+              <p className="text-sm text-muted-foreground mt-3">No sequences yet</p>
+              <Button size="sm" className="mt-3 h-7 text-xs" onClick={() => navigate("/crm/sequences")} data-testid="go-sequences-btn">
+                <Plus className="w-3.5 h-3.5 mr-1" /> Create Sequence
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {sequences.slice(0, 10).map(seq => {
+                const enrolled = (seq.contactIds || []).length;
+                const completed = contacts.filter(c => c.sequenceId === seq.id && c.sequenceStatus === "completed").length;
+                const pct = enrolled > 0 ? Math.round((completed / enrolled) * 100) : 0;
+                const statusColor = seq.status === "active" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                  seq.status === "paused" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+                  "bg-gray-500/20 text-gray-400 border-gray-500/30";
+                return (
+                  <div
+                    key={seq.id}
+                    className="flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-accent/30 cursor-pointer transition-colors"
+                    onClick={() => navigate(`/crm/sequences/${seq.id}`)}
+                    data-testid={`sequence-card-${seq.id}`}
+                  >
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-400 shrink-0">
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium">{seq.name}</span>
+                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 ${statusColor}`}>{seq.status}</Badge>
+                      </div>
+                      <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5">
+                        <span>{seq.steps.length} steps</span>
+                        <span>{enrolled} enrolled</span>
+                        <span>{pct}% complete</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {sequences.length > 10 && (
+                <Button variant="outline" size="sm" className="w-full h-7 text-xs" onClick={() => navigate("/crm/sequences")}>
+                  View all {sequences.length} sequences
+                </Button>
+              )}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 

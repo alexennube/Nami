@@ -371,6 +371,18 @@ export const crmAccountSchema = z.object({
 });
 export type CrmAccount = z.infer<typeof crmAccountSchema>;
 
+export const contactIntelligenceSchema = z.object({
+  analyzedAt: z.string(),
+  recommendedChannels: z.array(z.string()),
+  messagingApproach: z.string(),
+  onlineFootprint: z.string(),
+  painPoints: z.array(z.string()),
+  outreachTiming: z.string(),
+  talkingPoints: z.array(z.string()),
+  summary: z.string(),
+});
+export type ContactIntelligence = z.infer<typeof contactIntelligenceSchema>;
+
 export const crmContactSchema = z.object({
   id: z.string(),
   accountId: z.string().optional(),
@@ -388,6 +400,10 @@ export const crmContactSchema = z.object({
   stage: z.enum(["lead", "prospect", "qualified", "customer", "churned"]).optional(),
   sequenceId: z.string().optional(),
   sequenceStep: z.number().optional(),
+  sequenceStatus: z.enum(["active", "paused", "completed"]).optional(),
+  lastStepCompletedAt: z.string().optional(),
+  sequenceMetadata: z.record(z.any()).optional(),
+  contactIntelligence: contactIntelligenceSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -415,20 +431,26 @@ export const crmActivitySchema = z.object({
 });
 export type CrmActivity = z.infer<typeof crmActivitySchema>;
 
+export const sequenceStepSchema = z.object({
+  id: z.string(),
+  order: z.number(),
+  type: z.enum(["email", "phone_call", "linkedin", "social_media", "research", "wait", "task"]),
+  subject: z.string().optional(),
+  content: z.string().optional(),
+  delayDays: z.number().optional(),
+  instruction: z.string().optional(),
+});
+export type SequenceStep = z.infer<typeof sequenceStepSchema>;
+
 export const crmSequenceSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().optional(),
   status: z.enum(["active", "paused", "draft"]),
-  steps: z.array(z.object({
-    id: z.string(),
-    order: z.number(),
-    type: z.enum(["email", "wait", "task", "linkedin", "research"]),
-    subject: z.string().optional(),
-    content: z.string().optional(),
-    delayDays: z.number().optional(),
-    instruction: z.string().optional(),
-  })),
+  sequenceType: z.enum(["contact", "account"]).optional(),
+  accountId: z.string().optional(),
+  roleTargeting: z.record(z.string(), z.string()).optional(),
+  steps: z.array(sequenceStepSchema),
   contactIds: z.array(z.string()).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),

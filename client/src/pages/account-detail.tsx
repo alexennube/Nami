@@ -12,9 +12,9 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   ArrowLeft, Building2, Globe, Users, Pencil, Plus, Trash2, X, Check,
-  Mail, Phone
+  Mail, Phone, Zap, Play, Pause
 } from "lucide-react";
-import type { CrmAccount, CrmContact } from "@shared/schema";
+import type { CrmAccount, CrmContact, CrmSequence } from "@shared/schema";
 
 const STAGE_COLORS: Record<string, string> = {
   lead: "bg-gray-500/20 text-gray-400 border-gray-500/30",
@@ -90,6 +90,117 @@ function AddContactDialog({ open, onClose, accountId, accountName }: { open: boo
   );
 }
 
+function CreateAccountSequenceDialog({ open, onClose, accountId, contacts }: { open: boolean; onClose: () => void; accountId: string; contacts: CrmContact[] }) {
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [roleTargeting, setRoleTargeting] = useState<Record<string, string>>({});
+  const [roleKey, setRoleKey] = useState("");
+  const [roleMsg, setRoleMsg] = useState("");
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+
+  const addRoleTarget = () => {
+    if (!roleKey.trim() || !roleMsg.trim()) return;
+    setRoleTargeting(prev => ({ ...prev, [roleKey.trim()]: roleMsg.trim() }));
+    setRoleKey("");
+    setRoleMsg("");
+  };
+
+  const removeRoleTarget = (key: string) => {
+    setRoleTargeting(prev => { const next = { ...prev }; delete next[key]; return next; });
+  };
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/crm/accounts/${accountId}/sequences`, {
+        name,
+        description,
+        steps: [],
+        roleTargeting: Object.keys(roleTargeting).length > 0 ? roleTargeting : undefined,
+        contactIds: Array.from(selectedContacts),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/crm/accounts", accountId, "sequences"] });
+      onClose();
+      toast({ title: "Account sequence created" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Create Account Sequence</DialogTitle>
+          <DialogDescription>Create a coordinated sequence for contacts in this account.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <Input placeholder="Sequence name *" value={name} onChange={(e) => setName(e.target.value)} data-testid="account-seq-name" />
+          <textarea
+            placeholder="Description (optional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            className="w-full min-h-[40px] px-3 py-2 text-sm bg-background border border-border rounded-md resize-y focus:outline-none focus:ring-1 focus:ring-primary"
+            data-testid="account-seq-desc"
+          />
+
+          <div>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Role-Based Targeting</span>
+            <p className="text-[10px] text-muted-foreground mb-2">Define different messaging strategies by role (e.g. "CEO" gets executive messaging, "Engineer" gets technical details).</p>
+            <div className="space-y-1.5 mb-2">
+              {Object.entries(roleTargeting).map(([key, msg]) => (
+                <div key={key} className="flex items-center gap-2 p-2 border border-border rounded-md text-xs">
+                  <Badge variant="outline" className="text-[10px] shrink-0">{key}</Badge>
+                  <span className="flex-1 truncate text-muted-foreground">{msg}</span>
+                  <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0" onClick={() => removeRoleTarget(key)} data-testid={`remove-role-${key}`}>
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Input placeholder="Role (e.g. CEO)" value={roleKey} onChange={(e) => setRoleKey(e.target.value)} className="h-7 text-xs flex-[1]" data-testid="role-key-input" />
+              <Input placeholder="Messaging approach" value={roleMsg} onChange={(e) => setRoleMsg(e.target.value)} className="h-7 text-xs flex-[2]" data-testid="role-msg-input" />
+              <Button size="sm" className="h-7 text-xs" onClick={addRoleTarget} disabled={!roleKey.trim() || !roleMsg.trim()} data-testid="add-role-btn">Add</Button>
+            </div>
+          </div>
+
+          <div>
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Target Contacts</span>
+            <p className="text-[10px] text-muted-foreground mb-2">Select contacts to enroll. Leave empty to include all account contacts on activation.</p>
+            <div className="max-h-32 overflow-y-auto space-y-1">
+              {contacts.map(c => (
+                <label key={c.id} className="flex items-center gap-2 p-1.5 hover:bg-accent/30 rounded cursor-pointer text-xs">
+                  <input
+                    type="checkbox"
+                    checked={selectedContacts.has(c.id)}
+                    onChange={(e) => {
+                      setSelectedContacts(prev => {
+                        const next = new Set(prev);
+                        e.target.checked ? next.add(c.id) : next.delete(c.id);
+                        return next;
+                      });
+                    }}
+                    data-testid={`select-contact-${c.id}`}
+                  />
+                  <span>{c.firstName} {c.lastName}</span>
+                  {c.title && <span className="text-muted-foreground">- {c.title}</span>}
+                </label>
+              ))}
+              {contacts.length === 0 && <p className="text-[10px] text-muted-foreground py-2 text-center">No contacts in this account.</p>}
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} data-testid="account-seq-cancel">Cancel</Button>
+          <Button onClick={() => mutation.mutate()} disabled={!name.trim() || mutation.isPending} data-testid="account-seq-create">Create</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AccountDetail() {
   const params = useParams<{ id: string }>();
   const accountId = params.id;
@@ -97,6 +208,7 @@ export default function AccountDetail() {
   const [, navigate] = useLocation();
   const [editing, setEditing] = useState(false);
   const [addContactOpen, setAddContactOpen] = useState(false);
+  const [createSeqOpen, setCreateSeqOpen] = useState(false);
   const [editForm, setEditForm] = useState<Partial<CrmAccount>>({});
 
   const { data: account, isLoading } = useQuery<CrmAccount>({
@@ -107,6 +219,11 @@ export default function AccountDetail() {
   const { data: contacts = [], isLoading: contactsLoading } = useQuery<CrmContact[]>({
     queryKey: ["/api/crm/contacts", { accountId }],
     queryFn: async () => { const res = await fetch(`/api/crm/contacts?accountId=${accountId}`); return res.json(); },
+  });
+
+  const { data: accountSequences = [] } = useQuery<CrmSequence[]>({
+    queryKey: ["/api/crm/accounts", accountId, "sequences"],
+    queryFn: async () => { const res = await fetch(`/api/crm/accounts/${accountId}/sequences`); return res.json(); },
   });
 
   const updateMutation = useMutation({
@@ -377,6 +494,72 @@ export default function AccountDetail() {
               </div>
             )}
           </div>
+          <div className="border border-border rounded-lg">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-indigo-400" />
+                <h2 className="text-sm font-semibold">Account Sequences</h2>
+                <Badge variant="outline" className="text-[10px]">{accountSequences.length}</Badge>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={() => setCreateSeqOpen(true)}
+                  data-testid="create-account-sequence-btn"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" /> New Account Sequence
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => navigate("/crm/sequences")}
+                  data-testid="account-view-sequences"
+                >
+                  <Zap className="w-3.5 h-3.5 mr-1" /> Manage
+                </Button>
+              </div>
+            </div>
+
+            {accountSequences.length === 0 ? (
+              <div className="p-8 text-center">
+                <Zap className="w-8 h-8 text-muted-foreground/20 mx-auto mb-2" />
+                <p className="text-xs text-muted-foreground">No sequences linked to this account yet.</p>
+              </div>
+            ) : (
+              <div className="p-3 space-y-2">
+                {accountSequences.map(seq => {
+                  const enrolled = (seq.contactIds || []).length;
+                  const statusColor = seq.status === "active" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" :
+                    seq.status === "paused" ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30" :
+                    "bg-gray-500/20 text-gray-400 border-gray-500/30";
+                  return (
+                    <div
+                      key={seq.id}
+                      className="flex items-center gap-3 p-3 border border-border rounded-lg hover:bg-accent/30 cursor-pointer transition-colors"
+                      onClick={() => navigate(`/crm/sequences/${seq.id}`)}
+                      data-testid={`account-sequence-${seq.id}`}
+                    >
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-500/10 text-indigo-400 shrink-0">
+                        <Zap className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium">{seq.name}</span>
+                          <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 ${statusColor}`}>{seq.status}</Badge>
+                        </div>
+                        <div className="flex items-center gap-3 text-[10px] text-muted-foreground mt-0.5">
+                          <span>{seq.steps.length} steps</span>
+                          <span>{enrolled} enrolled</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </ScrollArea>
 
@@ -386,6 +569,15 @@ export default function AccountDetail() {
           onClose={() => setAddContactOpen(false)}
           accountId={accountId}
           accountName={account.name}
+        />
+      )}
+
+      {createSeqOpen && (
+        <CreateAccountSequenceDialog
+          open={createSeqOpen}
+          onClose={() => setCreateSeqOpen(false)}
+          accountId={accountId}
+          contacts={contacts}
         />
       )}
     </div>
