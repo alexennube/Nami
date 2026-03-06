@@ -3,7 +3,7 @@ import * as path from "path";
 import { exec, execFile } from "child_process";
 import { log } from "./index";
 import { storage } from "./storage";
-import { dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanCards, dbGetKanbanComments, dbAddKanbanComment, dbGetKanbanColumns, dbUpsertKanbanCard, dbDeleteKanbanCard, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbGetCrmContacts, dbGetCrmContact, dbGetCrmActivities, dbAddCrmActivity, dbGetCrmContactComments, dbAddCrmContactComment, dbUpsertCrmContact } from "./db-persist";
+import { dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanCards, dbGetKanbanComments, dbAddKanbanComment, dbGetKanbanColumns, dbUpsertKanbanCard, dbDeleteKanbanCard, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbGetCrmContacts, dbGetCrmContact, dbGetCrmActivities, dbAddCrmActivity, dbGetCrmContactComments, dbAddCrmContactComment, dbUpsertCrmContact, dbGetCrmAccounts, dbGetCrmAccount, dbUpsertCrmAccount } from "./db-persist";
 import crypto from "crypto";
 
 type EngineFunctions = {
@@ -1591,8 +1591,8 @@ const crmTool: NamiTool = {
     properties: {
       action: {
         type: "string",
-        description: "Action: 'list_contacts', 'get_contact', 'search_contacts', 'update_contact', 'log_activity', 'add_comment', 'get_activities', 'get_comments'",
-        enum: ["list_contacts", "get_contact", "search_contacts", "update_contact", "log_activity", "add_comment", "get_activities", "get_comments"],
+        description: "Action: 'create_contact', 'list_contacts', 'get_contact', 'search_contacts', 'update_contact', 'log_activity', 'add_comment', 'get_activities', 'get_comments', 'create_account', 'list_accounts', 'get_account'",
+        enum: ["create_contact", "list_contacts", "get_contact", "search_contacts", "update_contact", "log_activity", "add_comment", "get_activities", "get_comments", "create_account", "list_accounts", "get_account"],
       },
       contact_id: {
         type: "string",
@@ -1601,6 +1601,30 @@ const crmTool: NamiTool = {
       query: {
         type: "string",
         description: "Search query for search_contacts (searches name, email, company, tags)",
+      },
+      first_name: {
+        type: "string",
+        description: "First name (required for create_contact)",
+      },
+      last_name: {
+        type: "string",
+        description: "Last name (required for create_contact)",
+      },
+      email: {
+        type: "string",
+        description: "Email address (for create_contact)",
+      },
+      phone: {
+        type: "string",
+        description: "Phone number (for create_contact)",
+      },
+      company: {
+        type: "string",
+        description: "Company name (for create_contact, or name for create_account)",
+      },
+      account_id: {
+        type: "string",
+        description: "Account ID to associate a contact with (for create_contact), or target account (for get_account)",
       },
       updates: {
         type: "object",
@@ -1632,6 +1656,63 @@ const crmTool: NamiTool = {
     const authorType = (agentContext?.agentRole === "queen" || agentContext?.agentRole === "swarm_queen") ? "queen" : "agent";
 
     try {
+      if (action === "create_contact") {
+        const firstName = args.first_name as string;
+        const lastName = args.last_name as string;
+        if (!firstName || !lastName) return "Error: first_name and last_name are required.";
+        const now = new Date().toISOString();
+        const contact = {
+          id: crypto.randomUUID(),
+          accountId: (args.account_id as string) || null,
+          firstName, lastName,
+          email: (args.email as string) || "",
+          phone: (args.phone as string) || "",
+          title: (args.title as string) || "",
+          company: (args.company as string) || "",
+          linkedIn: "", twitter: "", website: "",
+          notes: (args.content as string) || "",
+          tags: [] as string[], stage: "lead",
+          sequenceId: null, sequenceStep: null,
+          createdAt: now, updatedAt: now,
+        };
+        await dbUpsertCrmContact(contact);
+        return `Contact created: **${firstName} ${lastName}** (${contact.id.substring(0, 8)}…) | ${contact.email || "no email"} | ${contact.company || "no company"}`;
+      }
+
+      if (action === "create_account") {
+        const name = (args.company as string) || (args.title as string);
+        if (!name) return "Error: company (account name) is required.";
+        const now = new Date().toISOString();
+        const account = {
+          id: crypto.randomUUID(),
+          name,
+          domain: (args.metadata as any)?.domain || "",
+          industry: (args.metadata as any)?.industry || "",
+          description: (args.content as string) || "",
+          website: (args.metadata as any)?.website || "",
+          size: (args.metadata as any)?.size || "",
+          createdAt: now, updatedAt: now,
+        };
+        await dbUpsertCrmAccount(account);
+        return `Account created: **${name}** (${account.id.substring(0, 8)}…)`;
+      }
+
+      if (action === "list_accounts") {
+        const accounts = await dbGetCrmAccounts();
+        if (accounts.length === 0) return "No accounts in CRM.";
+        return accounts.slice(0, 50).map((a: any) =>
+          `- **${a.name}** (${a.id.substring(0, 8)}…) | ${a.industry || "no industry"} | ${a.domain || "no domain"}`
+        ).join("\n");
+      }
+
+      if (action === "get_account") {
+        const accId = (args.account_id as string) || (args.contact_id as string);
+        if (!accId) return "Error: account_id required.";
+        const a = await dbGetCrmAccount(accId);
+        if (!a) return "Error: Account not found.";
+        return `**${a.name}**\nDomain: ${a.domain}\nIndustry: ${a.industry}\nSize: ${a.size}\nWebsite: ${a.website}\nDescription: ${a.description}\nCreated: ${a.createdAt}`;
+      }
+
       if (action === "list_contacts") {
         const contacts = await dbGetCrmContacts();
         if (contacts.length === 0) return "No contacts in CRM.";
