@@ -33,3 +33,6 @@ replit_zip_error_log.txt
 
 # OS
 Thumbs.db
+
+# Intermediate commit message used by the tasks agent — do not check in.
+.commit_message

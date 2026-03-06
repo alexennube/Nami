@@ -4,14 +4,13 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Plus, Building2, Users, Search, Trash2, Pencil, MoreHorizontal, Mail, Phone, Globe, MapPin } from "lucide-react";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Plus, Building2, Users, Search, Globe, Mail, Phone, Tag } from "lucide-react";
+import { ConfigurableTable, type ColumnDef } from "@/components/configurable-table";
 import type { CrmAccount, CrmContact } from "@shared/schema";
 
 const STAGE_COLORS: Record<string, string> = {
@@ -175,7 +174,7 @@ export default function CrmPage() {
   const [search, setSearch] = useState("");
   const [accountDialog, setAccountDialog] = useState<{ open: boolean; account?: CrmAccount }>({ open: false });
   const [contactDialog, setContactDialog] = useState<{ open: boolean; contact?: CrmContact }>({ open: false });
-  const [activeTab, setActiveTab] = useState("contacts");
+  const [activeTab, setActiveTab] = useState("accounts");
 
   const { data: accounts = [], isLoading: accountsLoading } = useQuery<CrmAccount[]>({ queryKey: ["/api/crm/accounts"] });
   const { data: contacts = [], isLoading: contactsLoading } = useQuery<CrmContact[]>({ queryKey: ["/api/crm/contacts"] });
@@ -209,6 +208,143 @@ export default function CrmPage() {
     return `${a.name} ${a.domain} ${a.industry}`.toLowerCase().includes(q);
   });
 
+  const accountColumns: ColumnDef<CrmAccount>[] = [
+    {
+      key: "name",
+      label: "Name",
+      defaultVisible: true,
+      render: (a) => (
+        <span className="font-medium text-primary hover:underline">{a.name}</span>
+      ),
+    },
+    {
+      key: "industry",
+      label: "Industry",
+      defaultVisible: true,
+      render: (a) => a.industry ? <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{a.industry}</Badge> : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "domain",
+      label: "Domain",
+      defaultVisible: true,
+      render: (a) => a.domain ? <span className="flex items-center gap-1 text-muted-foreground"><Globe className="w-2.5 h-2.5" />{a.domain}</span> : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "size",
+      label: "Size",
+      defaultVisible: true,
+      render: (a) => a.size ? <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{a.size}</Badge> : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "contactCount",
+      label: "Contacts",
+      defaultVisible: true,
+      render: (a) => {
+        const count = contacts.filter(c => c.accountId === a.id).length;
+        return <span className="text-muted-foreground">{count}</span>;
+      },
+    },
+    {
+      key: "website",
+      label: "Website",
+      defaultVisible: false,
+      render: (a) => a.website ? (
+        <a href={a.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <Globe className="w-2.5 h-2.5" />{a.website}
+        </a>
+      ) : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "created",
+      label: "Created",
+      defaultVisible: false,
+      render: (a) => <span className="text-muted-foreground">{new Date(a.createdAt).toLocaleDateString()}</span>,
+    },
+  ];
+
+  const contactColumns: ColumnDef<CrmContact>[] = [
+    {
+      key: "name",
+      label: "Name",
+      defaultVisible: true,
+      render: (c) => (
+        <div className="flex items-center gap-2">
+          <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary font-medium text-[10px] shrink-0">
+            {c.firstName[0]}{c.lastName[0]}
+          </div>
+          <span className="font-medium">{c.firstName} {c.lastName}</span>
+        </div>
+      ),
+    },
+    {
+      key: "email",
+      label: "Email",
+      defaultVisible: true,
+      render: (c) => c.email ? <span className="flex items-center gap-1 text-muted-foreground"><Mail className="w-2.5 h-2.5" />{c.email}</span> : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "phone",
+      label: "Phone",
+      defaultVisible: false,
+      render: (c) => c.phone ? <span className="flex items-center gap-1 text-muted-foreground"><Phone className="w-2.5 h-2.5" />{c.phone}</span> : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "company",
+      label: "Company",
+      defaultVisible: true,
+      render: (c) => c.company ? <span className="text-muted-foreground">{c.company}</span> : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "stage",
+      label: "Stage",
+      defaultVisible: true,
+      render: (c) => c.stage ? (
+        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 ${STAGE_COLORS[c.stage] || ""}`}>
+          {c.stage}
+        </Badge>
+      ) : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "tags",
+      label: "Tags",
+      defaultVisible: false,
+      render: (c) => (c.tags && c.tags.length > 0) ? (
+        <div className="flex items-center gap-1 flex-wrap">
+          {c.tags.slice(0, 2).map(tag => (
+            <Badge key={tag} variant="outline" className="text-[9px] px-1 py-0 h-3.5 bg-primary/10 text-primary border-primary/20">
+              <Tag className="w-2 h-2 mr-0.5" />{tag}
+            </Badge>
+          ))}
+          {c.tags.length > 2 && <span className="text-[9px] text-muted-foreground">+{c.tags.length - 2}</span>}
+        </div>
+      ) : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      key: "account",
+      label: "Account",
+      defaultVisible: true,
+      render: (c) => {
+        const account = accounts.find(a => a.id === c.accountId);
+        if (!account) return <span className="text-muted-foreground">—</span>;
+        return (
+          <span
+            className="text-primary hover:underline cursor-pointer flex items-center gap-1"
+            onClick={(e) => { e.stopPropagation(); navigate(`/crm/accounts/${account.id}`); }}
+            data-testid={`contact-account-link-${c.id}`}
+          >
+            <Building2 className="w-2.5 h-2.5" />{account.name}
+          </span>
+        );
+      },
+    },
+    {
+      key: "created",
+      label: "Created",
+      defaultVisible: false,
+      render: (c) => <span className="text-muted-foreground">{new Date(c.createdAt).toLocaleDateString()}</span>,
+    },
+  ];
+
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
@@ -235,11 +371,11 @@ export default function CrmPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
         <div className="flex items-center justify-between px-4 pt-2 shrink-0">
           <TabsList className="h-8">
-            <TabsTrigger value="contacts" className="text-xs h-7" data-testid="tab-contacts">
-              <Users className="w-3.5 h-3.5 mr-1" /> Contacts
-            </TabsTrigger>
             <TabsTrigger value="accounts" className="text-xs h-7" data-testid="tab-accounts">
               <Building2 className="w-3.5 h-3.5 mr-1" /> Accounts
+            </TabsTrigger>
+            <TabsTrigger value="contacts" className="text-xs h-7" data-testid="tab-contacts">
+              <Users className="w-3.5 h-3.5 mr-1" /> Contacts
             </TabsTrigger>
           </TabsList>
           <Button
@@ -252,124 +388,34 @@ export default function CrmPage() {
           </Button>
         </div>
 
-        <TabsContent value="contacts" className="flex-1 min-h-0 mt-0 px-4 pb-4">
-          <ScrollArea className="h-full">
-            {contactsLoading ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Loading contacts...</p>
-            ) : filteredContacts.length === 0 ? (
-              <div className="text-center py-12">
-                <Users className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">{search ? "No contacts match your search" : "No contacts yet"}</p>
-              </div>
-            ) : (
-              <div className="space-y-1 pt-2">
-                {filteredContacts.map(contact => {
-                  const account = accounts.find(a => a.id === contact.accountId);
-                  return (
-                    <div
-                      key={contact.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-accent/50 cursor-pointer transition-colors"
-                      onClick={() => navigate(`/crm/contacts/${contact.id}`)}
-                      data-testid={`contact-row-${contact.id}`}
-                    >
-                      <div className="flex items-center justify-center w-9 h-9 rounded-full bg-primary/10 text-primary font-medium text-sm shrink-0">
-                        {contact.firstName[0]}{contact.lastName[0]}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate">{contact.firstName} {contact.lastName}</span>
-                          {contact.stage && (
-                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 h-4 ${STAGE_COLORS[contact.stage] || ""}`}>
-                              {contact.stage}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
-                          {contact.title && <span>{contact.title}</span>}
-                          {contact.company && <span className="flex items-center gap-0.5"><Building2 className="w-2.5 h-2.5" />{contact.company}</span>}
-                          {account && <span className="text-primary/70">{account.name}</span>}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3 text-[11px] text-muted-foreground shrink-0">
-                        {contact.email && <span className="hidden md:flex items-center gap-0.5"><Mail className="w-2.5 h-2.5" />{contact.email}</span>}
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => e.stopPropagation()} data-testid={`contact-menu-${contact.id}`}>
-                            <MoreHorizontal className="w-3.5 h-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setContactDialog({ open: true, contact }); }}>
-                            <Pencil className="w-3 h-3 mr-2" /> Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-400" onClick={(e) => { e.stopPropagation(); deleteContactMutation.mutate(contact.id); }}>
-                            <Trash2 className="w-3 h-3 mr-2" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </ScrollArea>
+        <TabsContent value="accounts" className="flex-1 min-h-0 mt-0 px-4 pb-4 pt-2">
+          <ConfigurableTable
+            tableName="accounts"
+            columns={accountColumns}
+            data={filteredAccounts}
+            isLoading={accountsLoading}
+            emptyIcon={<Building2 className="w-10 h-10 text-muted-foreground/20 mx-auto" />}
+            emptyMessage={search ? "No accounts match your search" : "No accounts yet"}
+            getRowId={(a) => a.id}
+            onRowClick={(a) => navigate(`/crm/accounts/${a.id}`)}
+            onEdit={(a) => setAccountDialog({ open: true, account: a })}
+            onDelete={(a) => deleteAccountMutation.mutate(a.id)}
+          />
         </TabsContent>
 
-        <TabsContent value="accounts" className="flex-1 min-h-0 mt-0 px-4 pb-4">
-          <ScrollArea className="h-full">
-            {accountsLoading ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Loading accounts...</p>
-            ) : filteredAccounts.length === 0 ? (
-              <div className="text-center py-12">
-                <Building2 className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">{search ? "No accounts match your search" : "No accounts yet"}</p>
-              </div>
-            ) : (
-              <div className="space-y-1 pt-2">
-                {filteredAccounts.map(account => {
-                  const contactCount = contacts.filter(c => c.accountId === account.id).length;
-                  return (
-                    <div
-                      key={account.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-accent/50 transition-colors"
-                      data-testid={`account-row-${account.id}`}
-                    >
-                      <div className="flex items-center justify-center w-9 h-9 rounded-full bg-amber-500/10 text-amber-500 shrink-0">
-                        <Building2 className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium truncate">{account.name}</span>
-                          {account.industry && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">{account.industry}</Badge>}
-                          {account.size && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{account.size}</Badge>}
-                        </div>
-                        <div className="flex items-center gap-3 text-[11px] text-muted-foreground mt-0.5">
-                          {account.domain && <span className="flex items-center gap-0.5"><Globe className="w-2.5 h-2.5" />{account.domain}</span>}
-                          <span>{contactCount} contact{contactCount !== 1 ? "s" : ""}</span>
-                        </div>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" data-testid={`account-menu-${account.id}`}>
-                            <MoreHorizontal className="w-3.5 h-3.5" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setAccountDialog({ open: true, account })}>
-                            <Pencil className="w-3 h-3 mr-2" /> Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="text-red-400" onClick={() => deleteAccountMutation.mutate(account.id)}>
-                            <Trash2 className="w-3 h-3 mr-2" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </ScrollArea>
+        <TabsContent value="contacts" className="flex-1 min-h-0 mt-0 px-4 pb-4 pt-2">
+          <ConfigurableTable
+            tableName="contacts"
+            columns={contactColumns}
+            data={filteredContacts}
+            isLoading={contactsLoading}
+            emptyIcon={<Users className="w-10 h-10 text-muted-foreground/20 mx-auto" />}
+            emptyMessage={search ? "No contacts match your search" : "No contacts yet"}
+            getRowId={(c) => c.id}
+            onRowClick={(c) => navigate(`/crm/contacts/${c.id}`)}
+            onEdit={(c) => setContactDialog({ open: true, contact: c })}
+            onDelete={(c) => deleteContactMutation.mutate(c.id)}
+          />
         </TabsContent>
       </Tabs>
 

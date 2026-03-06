@@ -151,7 +151,13 @@ export default function ContactDetail() {
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
             {contact.title && <span>{contact.title}</span>}
             {contact.company && <span className="flex items-center gap-0.5"><Building2 className="w-2.5 h-2.5" />{contact.company}</span>}
-            {account && <span className="text-primary/70">{account.name}</span>}
+            {account && (
+              <Link href={`/crm/accounts/${account.id}`}>
+                <span className="text-primary hover:underline cursor-pointer flex items-center gap-0.5" data-testid="contact-account-link">
+                  <Building2 className="w-2.5 h-2.5" />{account.name}
+                </span>
+              </Link>
+            )}
           </div>
         </div>
       </div>

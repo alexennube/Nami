@@ -30,6 +30,7 @@ import Integrations from "@/pages/integrations";
 import KanbanPage from "@/pages/kanban";
 import CrmPage from "@/pages/crm";
 import ContactDetail from "@/pages/contact-detail";
+import AccountDetail from "@/pages/account-detail";
 
 function Router() {
   return (
@@ -50,6 +51,7 @@ function Router() {
       <Route path="/files" component={FilesPage} />
       <Route path="/kanban" component={KanbanPage} />
       <Route path="/crm" component={CrmPage} />
+      <Route path="/crm/accounts/:id" component={AccountDetail} />
       <Route path="/crm/contacts/:id" component={ContactDetail} />
       <Route path="/activity" component={Activity} />
       <Route path="/integrations" component={Integrations} />
