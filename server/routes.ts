@@ -1797,7 +1797,7 @@ export async function registerRoutes(
   return httpServer;
 }
 
-async function runContactIntelligenceAnalysis(contact: any): Promise<any> {
+export async function runContactIntelligenceAnalysis(contact: any): Promise<any> {
   const contactInfo = [
     `Name: ${contact.firstName} ${contact.lastName}`,
     contact.title ? `Title: ${contact.title}` : null,

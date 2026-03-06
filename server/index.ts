@@ -196,6 +196,7 @@ app.use((req, res, next) => {
         const config = await storageInstance.getConfig();
         const apiKeySource = (process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_API_KEY.length > 10) ? "env" : "config";
         log(`[BOOT] API key source: ${apiKeySource} | Model: ${config.defaultModel} | Provider: ${config.namiProvider || "openrouter"}`);
+        const { runContactIntelligenceAnalysis } = await import("./routes");
         registerEngine({
           createSwarmWithQueen: engine.createSwarmWithQueen,
           createSpawn: engine.createSpawn,
@@ -203,6 +204,7 @@ app.use((req, res, next) => {
           runSwarmQueen: engine.runSwarmQueen,
           getSwarmStatus: engine.getSwarmStatus,
           getSwarm: (swarmId: string) => storageInstance.getSwarm(swarmId),
+          runContactIntelligenceAnalysis,
         });
         await engine.bootEngine();
 
