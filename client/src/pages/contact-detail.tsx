@@ -252,6 +252,8 @@ export default function ContactDetail() {
                   <div className="flex justify-between"><span>Activities</span><span>{activities.length}</span></div>
                   <div className="flex justify-between"><span>Comments</span><span>{comments.length}</span></div>
                   <div className="flex justify-between"><span>Created</span><span>{new Date(contact.createdAt).toLocaleDateString()}</span></div>
+                  {contact.createdBy && <div className="flex justify-between"><span>Created By</span><span>{contact.createdBy}</span></div>}
+                  {contact.lastModifiedBy && <div className="flex justify-between"><span>Modified By</span><span>{contact.lastModifiedBy}</span></div>}
                 </div>
               </div>
             </div>

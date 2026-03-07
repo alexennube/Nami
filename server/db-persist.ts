@@ -179,6 +179,18 @@ async function ensureTables(): Promise<void> {
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_contacts_account ON nami_crm_contacts(account_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_activities_contact ON nami_crm_activities(contact_id)`);
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_crm_comments_contact ON nami_crm_contact_comments(contact_id)`);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS nami_audit_log (
+      id TEXT PRIMARY KEY,
+      record_type TEXT NOT NULL,
+      action TEXT NOT NULL,
+      data JSONB NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_log_record_type ON nami_audit_log(record_type)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_log_action ON nami_audit_log(action)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON nami_audit_log(created_at DESC)`);
 }
 
 let initialized = false;
@@ -596,6 +608,71 @@ export async function dbGetCrmSequencesByAccount(accountId: string): Promise<any
     [accountId]
   );
   return result.rows.map((r: any) => r.data);
+}
+
+export async function dbInsertAuditLog(entry: any): Promise<void> {
+  await init();
+  await pool.query(
+    `INSERT INTO nami_audit_log (id, record_type, action, data, created_at) VALUES ($1, $2, $3, $4::jsonb, NOW())`,
+    [entry.id, entry.recordType, entry.action, JSON.stringify(entry)]
+  );
+}
+
+export async function dbGetAuditLogs(opts?: {
+  recordType?: string;
+  action?: string;
+  startDate?: string;
+  endDate?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ entries: any[]; total: number }> {
+  await init();
+  const conditions: string[] = [];
+  const params: any[] = [];
+  let paramIdx = 1;
+
+  if (opts?.recordType) {
+    conditions.push(`record_type = $${paramIdx++}`);
+    params.push(opts.recordType);
+  }
+  if (opts?.action) {
+    conditions.push(`action = $${paramIdx++}`);
+    params.push(opts.action);
+  }
+  if (opts?.startDate) {
+    conditions.push(`created_at >= $${paramIdx++}::timestamptz`);
+    params.push(opts.startDate);
+  }
+  if (opts?.endDate) {
+    conditions.push(`created_at <= $${paramIdx++}::timestamptz`);
+    params.push(opts.endDate);
+  }
+  if (opts?.search) {
+    conditions.push(`(data->>'recordName' ILIKE $${paramIdx} OR data->>'summary' ILIKE $${paramIdx})`);
+    params.push(`%${opts.search}%`);
+    paramIdx++;
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+  const countRes = await pool.query(`SELECT COUNT(*) as count FROM nami_audit_log ${whereClause}`, params);
+  const total = parseInt(countRes.rows[0].count, 10);
+
+  const limit = opts?.limit || 50;
+  const offset = opts?.offset || 0;
+  const dataRes = await pool.query(
+    `SELECT data FROM nami_audit_log ${whereClause} ORDER BY created_at DESC LIMIT $${paramIdx++} OFFSET $${paramIdx++}`,
+    [...params, limit, offset]
+  );
+
+  return { entries: dataRes.rows.map(r => r.data), total };
+}
+
+export async function dbGetAllAuditLogs(): Promise<any[]> {
+  await init();
+  const res = await pool.query("SELECT data FROM nami_audit_log ORDER BY created_at DESC");
+  return res.rows.map(r => r.data);
 }
 
 export { pool, init as dbInit };

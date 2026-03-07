@@ -46,6 +46,8 @@ export const agentSchema = z.object({
   lastActiveAt: z.string(),
   tokensUsed: z.number().default(0),
   messagesProcessed: z.number().default(0),
+  createdBy: z.string().nullable().default(null),
+  lastModifiedBy: z.string().nullable().default(null),
 });
 export type Agent = z.infer<typeof agentSchema>;
 
@@ -78,6 +80,8 @@ export const swarmSchema = z.object({
   progress: z.number().default(0),
   maxCycles: z.number().optional(),
   schedule: swarmScheduleSchema.optional(),
+  createdBy: z.string().nullable().default(null),
+  lastModifiedBy: z.string().nullable().default(null),
 });
 export type Swarm = z.infer<typeof swarmSchema>;
 
@@ -168,6 +172,8 @@ export const memorySchema = z.object({
   importance: z.number().default(0),
   createdAt: z.string(),
   lastAccessedAt: z.string(),
+  createdBy: z.string().nullable().default(null),
+  lastModifiedBy: z.string().nullable().default(null),
 });
 export type Memory = z.infer<typeof memorySchema>;
 
@@ -315,6 +321,8 @@ export const docPageSchema = z.object({
   lastEditedBy: z.string(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  createdBy: z.string().nullable().default(null),
+  lastModifiedBy: z.string().nullable().default(null),
 });
 export type DocPage = z.infer<typeof docPageSchema>;
 
@@ -339,6 +347,8 @@ export const kanbanCardSchema = z.object({
   labels: z.array(z.string()).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  createdBy: z.string().nullable().default(null),
+  lastModifiedBy: z.string().nullable().default(null),
 });
 export type KanbanCard = z.infer<typeof kanbanCardSchema>;
 
@@ -368,6 +378,8 @@ export const crmAccountSchema = z.object({
   size: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  createdBy: z.string().nullable().default(null),
+  lastModifiedBy: z.string().nullable().default(null),
 });
 export type CrmAccount = z.infer<typeof crmAccountSchema>;
 
@@ -406,6 +418,8 @@ export const crmContactSchema = z.object({
   contactIntelligence: contactIntelligenceSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  createdBy: z.string().nullable().default(null),
+  lastModifiedBy: z.string().nullable().default(null),
 });
 export type CrmContact = z.infer<typeof crmContactSchema>;
 
@@ -454,8 +468,32 @@ export const crmSequenceSchema = z.object({
   contactIds: z.array(z.string()).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  createdBy: z.string().nullable().default(null),
+  lastModifiedBy: z.string().nullable().default(null),
 });
 export type CrmSequence = z.infer<typeof crmSequenceSchema>;
+
+export const auditActionSchema = z.enum(["created", "updated", "deleted", "executed"]);
+export type AuditAction = z.infer<typeof auditActionSchema>;
+
+export const auditRecordTypeSchema = z.enum(["agent", "swarm", "crm_contact", "crm_account", "crm_sequence", "kanban_card", "doc_page", "memory", "config"]);
+export type AuditRecordType = z.infer<typeof auditRecordTypeSchema>;
+
+export const auditLogEntrySchema = z.object({
+  id: z.string(),
+  timestamp: z.string(),
+  action: auditActionSchema,
+  recordType: auditRecordTypeSchema,
+  recordId: z.string(),
+  recordName: z.string(),
+  actorType: z.enum(["user", "agent", "system"]),
+  actorName: z.string(),
+  summary: z.string(),
+});
+export type AuditLogEntry = z.infer<typeof auditLogEntrySchema>;
+
+export const insertAuditLogSchema = auditLogEntrySchema.omit({ id: true, timestamp: true });
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 
 export type User = { id: string; username: string; password: string };
 export type InsertUser = { username: string; password: string };

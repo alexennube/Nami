@@ -10,7 +10,8 @@ import { fetchGeminiModels, testGeminiConnection, getGoogleAuthUrl, exchangeCode
 import { insertAgentSchema, insertSwarmSchema, skillSchema, swarmScheduleSchema, insertDocPageSchema } from "@shared/schema";
 import { log, activeSessions, hashToken } from "./index";
 import { getTools, setToolEnabled, getPermissions, updatePermissions, executeToolCall } from "./tools";
-import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount, dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanColumns, dbGetKanbanCards, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbUpsertKanbanCard, dbDeleteKanbanCard, dbSaveKanbanBoard, dbGetKanbanComments, dbAddKanbanComment, dbDeleteKanbanComment, dbDeleteKanbanCommentsByCard, dbGetCrmAccounts, dbGetCrmAccount, dbUpsertCrmAccount, dbDeleteCrmAccount, dbGetCrmContacts, dbGetCrmContactsByAccount, dbGetCrmContact, dbUpsertCrmContact, dbDeleteCrmContact, dbGetCrmContactComments, dbAddCrmContactComment, dbDeleteCrmContactComment, dbGetCrmActivities, dbAddCrmActivity, dbGetCrmSequences, dbGetCrmSequence, dbUpsertCrmSequence, dbDeleteCrmSequence, dbGetCrmSequencesByAccount } from "./db-persist";
+import { dbGet, dbSet, getGoogleAccounts, upsertGoogleAccount, deleteGoogleAccount, setDefaultGoogleAccount, getDefaultGoogleAccount, dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanColumns, dbGetKanbanCards, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbUpsertKanbanCard, dbDeleteKanbanCard, dbSaveKanbanBoard, dbGetKanbanComments, dbAddKanbanComment, dbDeleteKanbanComment, dbDeleteKanbanCommentsByCard, dbGetCrmAccounts, dbGetCrmAccount, dbUpsertCrmAccount, dbDeleteCrmAccount, dbGetCrmContacts, dbGetCrmContactsByAccount, dbGetCrmContact, dbUpsertCrmContact, dbDeleteCrmContact, dbGetCrmContactComments, dbAddCrmContactComment, dbDeleteCrmContactComment, dbGetCrmActivities, dbAddCrmActivity, dbGetCrmSequences, dbGetCrmSequence, dbUpsertCrmSequence, dbDeleteCrmSequence, dbGetCrmSequencesByAccount, dbGetAuditLogs, dbGetAllAuditLogs } from "./db-persist";
+import { logAudit, USER_ACTOR } from "./audit";
 import crypto from "crypto";
 import { engineMind } from "./engine-mind";
 
@@ -195,6 +196,7 @@ export async function registerRoutes(
         systemPrompt: data.systemPrompt,
         parentId: data.parentId,
         swarmId: data.swarmId,
+        createdBy: "User",
       });
       res.status(201).json(agent);
     } catch (error: any) {
@@ -206,6 +208,7 @@ export async function registerRoutes(
     try {
       const { action } = req.body;
       const agent = await agentAction(req.params.id, action);
+      logAudit("executed", "agent", req.params.id, agent.name, USER_ACTOR, `Agent "${agent.name}" action: ${action}`);
       res.json(agent);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -224,7 +227,7 @@ export async function registerRoutes(
   });
 
   app.delete("/api/agents/:id", async (req, res) => {
-    const deleted = await storage.deleteAgent(req.params.id);
+    const deleted = await storage.deleteAgent(req.params.id, "User");
     if (!deleted) return res.status(404).json({ message: "Agent not found" });
     res.json({ success: true });
   });
@@ -250,6 +253,7 @@ export async function registerRoutes(
         steps: data.steps,
         maxCycles: data.maxCycles,
         schedule: data.schedule,
+        createdBy: "User",
       });
       res.status(201).json(swarm);
     } catch (error: any) {
@@ -261,6 +265,7 @@ export async function registerRoutes(
     try {
       const { action } = req.body;
       const swarm = await swarmAction(req.params.id, action);
+      logAudit("executed", "swarm", req.params.id, swarm.name, USER_ACTOR, `Swarm "${swarm.name}" action: ${action}`);
       res.json(swarm);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -283,9 +288,9 @@ export async function registerRoutes(
     if (!swarm) return res.status(404).json({ message: "Swarm not found" });
 
     for (const agentId of swarm.agentIds) {
-      await storage.deleteAgent(agentId);
+      await storage.deleteAgent(agentId, "User");
     }
-    await storage.deleteSwarm(req.params.id);
+    await storage.deleteSwarm(req.params.id, "User");
     res.json({ success: true });
   });
 
@@ -394,7 +399,7 @@ export async function registerRoutes(
     try {
       const { content, category, importance } = req.body;
       if (!content || !category) return res.status(400).json({ message: "Content and category required" });
-      const memory = await storage.addMemory({ content, category, importance: importance || 0 });
+      const memory = await storage.addMemory({ content, category, importance: importance || 0, createdBy: "User", lastModifiedBy: "User" });
       res.status(201).json(memory);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
@@ -402,7 +407,7 @@ export async function registerRoutes(
   });
 
   app.delete("/api/memories/:id", async (req, res) => {
-    const deleted = await storage.deleteMemory(req.params.id);
+    const deleted = await storage.deleteMemory(req.params.id, "User");
     if (!deleted) return res.status(404).json({ message: "Memory not found" });
     res.json({ success: true });
   });
@@ -469,7 +474,7 @@ export async function registerRoutes(
   });
 
   app.delete("/api/docs/:slug", async (req, res) => {
-    const deleted = await storage.deleteDoc(req.params.slug);
+    const deleted = await storage.deleteDoc(req.params.slug, "User");
     if (!deleted) return res.status(404).json({ message: "Doc not found" });
     res.json({ success: true });
   });
@@ -574,7 +579,7 @@ export async function registerRoutes(
       if (updates.swarmQueenModel !== undefined) {
         delete updates.swarmQueenModel;
       }
-      const config = await storage.updateConfig(updates);
+      const config = await storage.updateConfig(updates, "User");
       const safeConfig = {
         ...config,
         openRouterApiKey: config.openRouterApiKey ? "sk-or-v1-****" : "",
@@ -1223,8 +1228,11 @@ export async function registerRoutes(
         labels: labels || [],
         createdAt: now,
         updatedAt: now,
+        createdBy: "User",
+        lastModifiedBy: "User",
       };
       await dbUpsertKanbanCard(card);
+      logAudit("created", "kanban_card", card.id, card.title, USER_ACTOR, `Card "${card.title}" created`);
       res.json(card);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1236,8 +1244,9 @@ export async function registerRoutes(
       const cards = await dbGetKanbanCards();
       const card = cards.find(c => c.id === req.params.id);
       if (!card) return res.status(404).json({ error: "Card not found" });
-      const updated = { ...card, ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
+      const updated = { ...card, ...req.body, id: req.params.id, updatedAt: new Date().toISOString(), lastModifiedBy: "User" };
       await dbUpsertKanbanCard(updated);
+      logAudit("updated", "kanban_card", updated.id, updated.title, USER_ACTOR, `Card "${updated.title}" updated`);
       res.json(updated);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1246,8 +1255,11 @@ export async function registerRoutes(
 
   app.delete("/api/kanban/cards/:id", async (req, res) => {
     try {
+      const cards = await dbGetKanbanCards();
+      const card = cards.find((c: any) => c.id === req.params.id);
       await dbDeleteKanbanCommentsByCard(req.params.id);
       await dbDeleteKanbanCard(req.params.id);
+      logAudit("deleted", "kanban_card", req.params.id, card?.title || req.params.id, USER_ACTOR, `Card "${card?.title || req.params.id}" deleted`);
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -1361,8 +1373,9 @@ export async function registerRoutes(
       const { name, domain, industry, description, website, size } = req.body;
       if (!name) return res.status(400).json({ error: "name required" });
       const now = new Date().toISOString();
-      const account = { id: crypto.randomUUID(), name, domain: domain || "", industry: industry || "", description: description || "", website: website || "", size: size || "", createdAt: now, updatedAt: now };
+      const account = { id: crypto.randomUUID(), name, domain: domain || "", industry: industry || "", description: description || "", website: website || "", size: size || "", createdAt: now, updatedAt: now, createdBy: "User", lastModifiedBy: "User" };
       await dbUpsertCrmAccount(account);
+      logAudit("created", "crm_account", account.id, account.name, USER_ACTOR, `CRM account "${account.name}" created`);
       res.status(201).json(account);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1371,15 +1384,18 @@ export async function registerRoutes(
     try {
       const existing = await dbGetCrmAccount(req.params.id);
       if (!existing) return res.status(404).json({ error: "Account not found" });
-      const updated = { ...existing, ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
+      const updated = { ...existing, ...req.body, id: req.params.id, updatedAt: new Date().toISOString(), lastModifiedBy: "User" };
       await dbUpsertCrmAccount(updated);
+      logAudit("updated", "crm_account", updated.id, updated.name, USER_ACTOR, `CRM account "${updated.name}" updated`);
       res.json(updated);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   app.delete("/api/crm/accounts/:id", async (req, res) => {
     try {
+      const account = await dbGetCrmAccount(req.params.id);
       await dbDeleteCrmAccount(req.params.id);
+      logAudit("deleted", "crm_account", req.params.id, account?.name || req.params.id, USER_ACTOR, `CRM account "${account?.name || req.params.id}" deleted`);
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1416,8 +1432,10 @@ export async function registerRoutes(
         tags: req.body.tags || [], stage: req.body.stage || "lead",
         sequenceId: null, sequenceStep: null,
         createdAt: now, updatedAt: now,
+        createdBy: "User", lastModifiedBy: "User",
       };
       await dbUpsertCrmContact(contact);
+      logAudit("created", "crm_contact", contact.id, `${contact.firstName} ${contact.lastName}`, USER_ACTOR, `CRM contact "${contact.firstName} ${contact.lastName}" created`);
       res.status(201).json(contact);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1426,15 +1444,18 @@ export async function registerRoutes(
     try {
       const existing = await dbGetCrmContact(req.params.id);
       if (!existing) return res.status(404).json({ error: "Contact not found" });
-      const updated = { ...existing, ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
+      const updated = { ...existing, ...req.body, id: req.params.id, updatedAt: new Date().toISOString(), lastModifiedBy: "User" };
       await dbUpsertCrmContact(updated);
+      logAudit("updated", "crm_contact", updated.id, `${updated.firstName} ${updated.lastName}`, USER_ACTOR, `CRM contact "${updated.firstName} ${updated.lastName}" updated`);
       res.json(updated);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   app.delete("/api/crm/contacts/:id", async (req, res) => {
     try {
+      const contact = await dbGetCrmContact(req.params.id);
       await dbDeleteCrmContact(req.params.id);
+      logAudit("deleted", "crm_contact", req.params.id, contact ? `${contact.firstName} ${contact.lastName}` : req.params.id, USER_ACTOR, `CRM contact deleted`);
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1517,8 +1538,10 @@ export async function registerRoutes(
         status: "draft" as const, sequenceType: "contact" as const,
         steps: steps || [],
         contactIds: [], createdAt: now, updatedAt: now,
+        createdBy: "User", lastModifiedBy: "User",
       };
       await dbUpsertCrmSequence(seq);
+      logAudit("created", "crm_sequence", seq.id, seq.name, USER_ACTOR, `CRM sequence "${seq.name}" created`);
       res.status(201).json(seq);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1527,15 +1550,18 @@ export async function registerRoutes(
     try {
       const existing = await dbGetCrmSequence(req.params.id);
       if (!existing) return res.status(404).json({ error: "Sequence not found" });
-      const updated = { ...existing, ...req.body, id: req.params.id, updatedAt: new Date().toISOString() };
+      const updated = { ...existing, ...req.body, id: req.params.id, updatedAt: new Date().toISOString(), lastModifiedBy: "User" };
       await dbUpsertCrmSequence(updated);
+      logAudit("updated", "crm_sequence", updated.id, updated.name, USER_ACTOR, `CRM sequence "${updated.name}" updated`);
       res.json(updated);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   app.delete("/api/crm/sequences/:id", async (req, res) => {
     try {
+      const seq = await dbGetCrmSequence(req.params.id);
       await dbDeleteCrmSequence(req.params.id);
+      logAudit("deleted", "crm_sequence", req.params.id, seq?.name || req.params.id, USER_ACTOR, `CRM sequence deleted`);
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1792,6 +1818,43 @@ export async function registerRoutes(
       }
       res.json(seq);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get("/api/audit-log", async (req, res) => {
+    try {
+      const { recordType, action, startDate, endDate, search, page, limit: lim } = req.query;
+      const limit = Math.min(parseInt(lim as string) || 50, 200);
+      const pageNum = Math.max(parseInt(page as string) || 1, 1);
+      const offset = (pageNum - 1) * limit;
+      const result = await dbGetAuditLogs({
+        recordType: recordType as string | undefined,
+        action: action as string | undefined,
+        startDate: startDate as string | undefined,
+        endDate: endDate as string | undefined,
+        search: search as string | undefined,
+        limit,
+        offset,
+      });
+      res.json({ entries: result.entries, total: result.total, page: pageNum, limit });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/audit-log/csv", async (_req, res) => {
+    try {
+      const entries = await dbGetAllAuditLogs();
+      const headers = ["timestamp", "action", "recordType", "recordId", "recordName", "actorType", "actorName", "summary"];
+      const csvRows = [headers.join(",")];
+      for (const e of entries) {
+        csvRows.push(headers.map(h => `"${String(e[h] || "").replace(/"/g, '""')}"`).join(","));
+      }
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename=audit-log-${new Date().toISOString().split("T")[0]}.csv`);
+      res.send(csvRows.join("\n"));
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   return httpServer;

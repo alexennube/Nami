@@ -4,6 +4,7 @@ import { log } from "./index";
 import { engineMind } from "./engine-mind";
 import { randomUUID } from "crypto";
 import type { Agent, Swarm, SwarmSchedule, NamiEvent, EngineState, InsertUsageRecord } from "@shared/schema";
+import { logAudit, actorFromName, type AuditContext } from "./audit";
 
 async function recordUsage(
   result: ChatResult,
@@ -174,7 +175,7 @@ async function checkScheduledSwarms(): Promise<void> {
 
       const queen = swarm.queenId ? await storage.getAgent(swarm.queenId) : null;
       if (queen) {
-        await storage.updateAgent(queen.id, { status: "running" });
+        await storage.updateAgent(queen.id, { status: "running", lastModifiedBy: "Engine" });
         runSwarmQueen(swarm.id).catch((err: any) => {
           log(`Scheduled queen loop error: ${err.message}`, "scheduler");
         });
@@ -495,6 +496,7 @@ export async function createSpawn(data: {
   systemPrompt: string;
   parentId: string | null;
   swarmId: string | null;
+  createdBy?: string;
 }): Promise<Agent> {
   if (engineMind.isInitialized()) {
     try {
@@ -512,6 +514,7 @@ export async function createSpawn(data: {
     }
   }
 
+  const actor = data.createdBy || "Nami Engine";
   const agent = await storage.createAgent({
     name: data.name,
     role: "spawn",
@@ -520,6 +523,8 @@ export async function createSpawn(data: {
     systemPrompt: data.systemPrompt,
     parentId: data.parentId,
     swarmId: data.swarmId,
+    createdBy: actor,
+    lastModifiedBy: actor,
   });
 
   await eventBus.emit("agent_created", { name: agent.name, role: "spawn", agentId: agent.id }, "nami");
@@ -534,6 +539,8 @@ export async function createSpawn(data: {
     content: `Spawn "${agent.name}" created with model ${agent.model}. Role: ${agent.systemPrompt.substring(0, 100)}`,
     category: "agents",
     importance: 5,
+    createdBy: "Engine",
+    lastModifiedBy: "Engine",
   });
 
   log(`Spawn created: ${agent.name} (${agent.id})`, "engine");
@@ -565,7 +572,9 @@ export async function createSwarmWithQueen(data: {
   maxCycles?: number;
   steps?: Array<{ name: string; type: "prompt" | "code"; instruction: string; agentId?: string | null }>;
   schedule?: any;
+  createdBy?: string;
 }): Promise<{ swarm: Swarm; queen: Agent }> {
+  const actor = data.createdBy || "Nami Engine";
   const swarm = await storage.createSwarm({
     name: data.name,
     goal: data.goal,
@@ -581,8 +590,11 @@ export async function createSwarmWithQueen(data: {
   await storage.updateSwarm(swarm.id, {
     queenId: queen.id,
     agentIds: [queen.id],
+    createdBy: actor,
+    lastModifiedBy: actor,
   });
 
+  logAudit("created", "swarm", swarm.id, swarm.name, actorFromName(actor), `Swarm "${swarm.name}" created with goal: ${swarm.goal}`);
   await eventBus.emit("swarm_created", { name: swarm.name, goal: swarm.goal, swarmId: swarm.id, queenId: queen.id }, "nami");
 
   await storage.addThought({
@@ -595,6 +607,8 @@ export async function createSwarmWithQueen(data: {
     content: `Swarm "${swarm.name}" created. Goal: ${swarm.goal}. Objective: ${swarm.objective}`,
     category: "swarms",
     importance: 7,
+    createdBy: "Engine",
+    lastModifiedBy: "Engine",
   });
 
   log(`Swarm created: ${swarm.name} with queen ${queen.name}`, "engine");
@@ -626,7 +640,7 @@ export async function agentAction(agentId: string, action: string): Promise<Agen
       throw new Error(`Unknown action: ${action}`);
   }
 
-  const updated = await storage.updateAgent(agentId, { status: newStatus });
+  const updated = await storage.updateAgent(agentId, { status: newStatus, lastModifiedBy: "Engine" });
   if (!updated) throw new Error("Failed to update agent");
 
   await eventBus.emit("agent_status_changed", { agentId, name: agent.name, oldStatus: agent.status, newStatus, action }, agent.role === "swarm_queen" ? "swarm_queen" : "nami");
@@ -644,25 +658,25 @@ export async function swarmAction(swarmId: string, action: string): Promise<Swar
     case "activate":
       newStatus = "active";
       if (swarm.queenId) {
-        await storage.updateAgent(swarm.queenId, { status: "running" });
+        await storage.updateAgent(swarm.queenId, { status: "running", lastModifiedBy: "Engine" });
       }
       break;
     case "pause":
       newStatus = "paused";
       if (swarm.queenId) {
-        await storage.updateAgent(swarm.queenId, { status: "paused" });
+        await storage.updateAgent(swarm.queenId, { status: "paused", lastModifiedBy: "Engine" });
       }
       break;
     case "resume":
       newStatus = "active";
       if (swarm.queenId) {
-        await storage.updateAgent(swarm.queenId, { status: "running" });
+        await storage.updateAgent(swarm.queenId, { status: "running", lastModifiedBy: "Engine" });
       }
       break;
     case "complete":
       newStatus = "completed";
       if (swarm.queenId) {
-        await storage.updateAgent(swarm.queenId, { status: "completed" });
+        await storage.updateAgent(swarm.queenId, { status: "completed", lastModifiedBy: "Engine" });
       }
       break;
     default:
@@ -676,7 +690,7 @@ export async function swarmAction(swarmId: string, action: string): Promise<Swar
     return sleeping || swarm;
   }
 
-  const updated = await storage.updateSwarm(swarmId, { status: newStatus, completedAt: newStatus === "completed" ? new Date().toISOString() : null });
+  const updated = await storage.updateSwarm(swarmId, { status: newStatus, completedAt: newStatus === "completed" ? new Date().toISOString() : null, lastModifiedBy: "Engine" });
   if (!updated) throw new Error("Failed to update swarm");
 
   if (newStatus === "completed") {
@@ -1005,7 +1019,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
   const config = await storage.getConfig();
   log(`SwarmQueen starting autonomous loop for swarm ${swarm.name} (${swarmId})`, "engine");
 
-  await storage.updateAgent(queen.id, { status: "running" });
+  await storage.updateAgent(queen.id, { status: "running", lastModifiedBy: "Engine" });
   await eventBus.emit("system", { message: `SwarmQueen ${queen.name} starting autonomous work on: ${swarm.goal}` }, "swarm_queen");
 
   await storage.addSwarmMessage({
@@ -1146,7 +1160,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
 
           const spawnResult = await runAgentInference(spawn.id, spawnTask);
 
-          await storage.updateAgent(spawn.id, { status: "completed" });
+          await storage.updateAgent(spawn.id, { status: "completed", lastModifiedBy: "Engine" });
 
           await storage.addMessage({
             fromAgentId: spawn.id,
@@ -1255,7 +1269,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
           const parsed = JSON.parse(completeMatch[1].trim());
           const summary = parsed.summary || "Objective completed";
 
-          await storage.updateAgent(queen.id, { status: "completed" });
+          await storage.updateAgent(queen.id, { status: "completed", lastModifiedBy: "Engine" });
 
           await storage.addSwarmMessage({
             swarmId,
@@ -1307,7 +1321,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
 
         if (idleCycles >= IDLE_FORCE_COMPLETE_THRESHOLD) {
           log(`SwarmQueen force-completing swarm ${swarm.name} after ${idleCycles} idle cycles`, "engine");
-          await storage.updateAgent(queen.id, { status: "completed" });
+          await storage.updateAgent(queen.id, { status: "completed", lastModifiedBy: "Engine" });
           await storage.addSwarmMessage({
             swarmId,
             agentId: queen.id,
@@ -1378,7 +1392,7 @@ export async function runSwarmQueen(swarmId: string, maxCycles?: number): Promis
 
   const finalSwarm = await storage.getSwarm(swarmId);
   if (finalSwarm && finalSwarm.status === "active") {
-    await storage.updateAgent(queen.id, { status: "completed" });
+    await storage.updateAgent(queen.id, { status: "completed", lastModifiedBy: "Engine" });
 
     await storage.addSwarmMessage({
       swarmId,

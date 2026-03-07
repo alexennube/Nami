@@ -186,6 +186,12 @@ export default function SwarmDetail() {
           {swarm.objective && swarm.objective !== swarm.goal && (
             <p className="text-[11px] text-muted-foreground mt-1" data-testid="text-swarm-objective">{swarm.objective}</p>
           )}
+          {(swarm.createdBy || swarm.lastModifiedBy) && (
+            <div className="flex gap-3 text-[10px] text-muted-foreground mt-1">
+              {swarm.createdBy && <span>Created by: {swarm.createdBy}</span>}
+              {swarm.lastModifiedBy && <span>Last modified by: {swarm.lastModifiedBy}</span>}
+            </div>
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5 shrink-0">

@@ -246,6 +246,10 @@ export default function SequenceDetail() {
           <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
             <span>{sequence.steps.length} step{sequence.steps.length !== 1 ? "s" : ""}</span>
             <span>{enrolledContacts.length} enrolled</span>
+            {sequence.createdBy && <span>Created by: {sequence.createdBy}</span>}
+            {sequence.createdAt && <span>Created: {new Date(sequence.createdAt).toLocaleDateString()}</span>}
+            {sequence.lastModifiedBy && <span>Modified by: {sequence.lastModifiedBy}</span>}
+            {sequence.updatedAt && <span>Modified: {new Date(sequence.updatedAt).toLocaleString()}</span>}
             {account && (
               <Link href={`/crm/accounts/${account.id}`}>
                 <span className="text-primary hover:underline cursor-pointer flex items-center gap-0.5">

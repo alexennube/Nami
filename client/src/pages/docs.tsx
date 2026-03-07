@@ -125,9 +125,11 @@ export default function DocsPage() {
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-lg" data-testid="text-doc-title">{selectedDoc.title}</CardTitle>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1"><User className="w-3 h-3" /> {selectedDoc.lastEditedBy}</span>
-                <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(selectedDoc.updatedAt).toLocaleString()}</span>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                {selectedDoc.createdBy && <span>Created by: {selectedDoc.createdBy}</span>}
+                <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Created: {new Date(selectedDoc.createdAt).toLocaleDateString()}</span>
+                <span className="flex items-center gap-1"><User className="w-3 h-3" /> Modified by: {selectedDoc.lastModifiedBy || selectedDoc.lastEditedBy}</span>
+                <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Modified: {new Date(selectedDoc.updatedAt).toLocaleString()}</span>
                 <Badge variant="secondary" className="text-[10px]">{selectedDoc.slug}</Badge>
               </div>
             </CardHeader>

@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import { dbGet, dbSet, dbUpsertRow, dbInsertRow, dbDeleteRow, dbDeleteWhere, dbGetAllRows, dbGetRowsByColumn, dbInit, dbUpsertByKey, dbDeleteByKey, dbTruncate, dbGetAllWorkspaceFiles } from "./db-persist";
+import { logAudit, SYSTEM_ACTOR, actorFromName, type AuditContext } from "./audit";
 
 const PERSIST_DIR = path.join(process.cwd(), ".nami-data");
 const CONFIG_FILE = path.join(PERSIST_DIR, "config.json");
@@ -60,19 +61,19 @@ export interface IStorage {
   getAgent(id: string): Promise<Agent | undefined>;
   createAgent(agent: InsertAgent): Promise<Agent>;
   updateAgent(id: string, updates: Partial<Agent>): Promise<Agent | undefined>;
-  deleteAgent(id: string): Promise<boolean>;
+  deleteAgent(id: string, actor?: string): Promise<boolean>;
 
   getSwarms(): Promise<Swarm[]>;
   getSwarm(id: string): Promise<Swarm | undefined>;
   createSwarm(swarm: InsertSwarm): Promise<Swarm>;
   updateSwarm(id: string, updates: Partial<Swarm>): Promise<Swarm | undefined>;
-  deleteSwarm(id: string): Promise<boolean>;
+  deleteSwarm(id: string, actor?: string): Promise<boolean>;
 
   getEvents(): Promise<NamiEvent[]>;
   addEvent(event: Omit<NamiEvent, "id" | "timestamp">): Promise<NamiEvent>;
 
   getConfig(): Promise<NamiConfig>;
-  updateConfig(updates: Partial<NamiConfig>): Promise<NamiConfig>;
+  updateConfig(updates: Partial<NamiConfig>, actor?: string): Promise<NamiConfig>;
 
   getStats(): Promise<SystemStats>;
 
@@ -98,7 +99,7 @@ export interface IStorage {
   getMemories(): Promise<Memory[]>;
   addMemory(memory: Omit<Memory, "id" | "createdAt" | "lastAccessedAt">): Promise<Memory>;
   updateMemory(id: string, updates: Partial<Memory>): Promise<Memory | undefined>;
-  deleteMemory(id: string): Promise<boolean>;
+  deleteMemory(id: string, actor?: string): Promise<boolean>;
 
   getSkills(): Promise<Skill[]>;
   getSkill(id: string): Promise<Skill | undefined>;
@@ -110,7 +111,7 @@ export interface IStorage {
   getDocs(): Promise<DocPage[]>;
   getDoc(slug: string): Promise<DocPage | undefined>;
   upsertDoc(data: InsertDocPage): Promise<DocPage>;
-  deleteDoc(slug: string): Promise<boolean>;
+  deleteDoc(slug: string, actor?: string): Promise<boolean>;
 
   getSwarmMessages(swarmId: string): Promise<SwarmMessage[]>;
   addSwarmMessage(message: Omit<SwarmMessage, "id" | "timestamp">): Promise<SwarmMessage>;
@@ -498,6 +499,7 @@ export class MemStorage implements IStorage {
     this.agents.set(id, agent);
     this.persistAgents();
     dbUpsertRow("nami_agents", agent.id, agent).catch((e) => console.error(`[storage] DB agent insert FAILED for ${agent.id}: ${e.message}`));
+    logAudit("created", "agent", id, agent.name, actorFromName(data.createdBy), `Agent "${agent.name}" created (role: ${agent.role})`);
     return agent;
   }
 
@@ -508,14 +510,23 @@ export class MemStorage implements IStorage {
     this.agents.set(id, updated);
     this.persistAgents();
     dbUpsertRow("nami_agents", updated.id, updated).catch((e) => console.error(`[storage] DB agent update FAILED for ${updated.id}: ${e.message}`));
+    const meaningfulKeys = Object.keys(updates).filter(k => !["lastActiveAt", "tokensUsed", "messagesProcessed"].includes(k));
+    if (meaningfulKeys.length > 0) {
+      const summary = updates.status && updates.status !== agent.status
+        ? `Agent "${updated.name}" status: ${agent.status} → ${updates.status}`
+        : `Agent "${updated.name}" updated: ${meaningfulKeys.join(", ")}`;
+      logAudit("updated", "agent", id, updated.name, actorFromName(updates.lastModifiedBy), summary);
+    }
     return updated;
   }
 
-  async deleteAgent(id: string): Promise<boolean> {
+  async deleteAgent(id: string, actor?: string): Promise<boolean> {
+    const agent = this.agents.get(id);
     const result = this.agents.delete(id);
     if (result) {
       this.persistAgents();
       dbDeleteRow("nami_agents", id).catch((e) => console.log(`[storage] DB agent delete error: ${e.message}`));
+      logAudit("deleted", "agent", id, agent?.name || id, actorFromName(actor), `Agent "${agent?.name || id}" deleted`);
     }
     return result;
   }
@@ -591,15 +602,24 @@ export class MemStorage implements IStorage {
     } catch (e: any) {
       console.error(`[storage] DB swarm update FAILED for ${updated.id}: ${e.message}`);
     }
+    const swarmMeaningfulKeys = Object.keys(updates).filter(k => !["lastModifiedBy"].includes(k));
+    if (swarmMeaningfulKeys.length > 0) {
+      const summary = updates.status && updates.status !== swarm.status
+        ? `Swarm "${updated.name}" status: ${swarm.status} → ${updates.status}`
+        : `Swarm "${updated.name}" updated: ${swarmMeaningfulKeys.join(", ")}`;
+      logAudit("updated", "swarm", id, updated.name, actorFromName(updates.lastModifiedBy), summary);
+    }
     return updated;
   }
 
-  async deleteSwarm(id: string): Promise<boolean> {
+  async deleteSwarm(id: string, actor?: string): Promise<boolean> {
+    const swarm = this.swarms.get(id);
     const result = this.swarms.delete(id);
     if (result) {
       this.persistSwarms();
       dbDeleteRow("nami_swarms", id).catch((e) => console.log(`[storage] DB swarm delete error: ${e.message}`));
       dbDeleteWhere("nami_swarm_messages", "swarm_id", id).catch((e) => console.log(`[storage] DB swarm messages delete error: ${e.message}`));
+      logAudit("deleted", "swarm", id, swarm?.name || id, actorFromName(actor), `Swarm "${swarm?.name || id}" deleted`);
     }
     return result;
   }
@@ -628,11 +648,17 @@ export class MemStorage implements IStorage {
     return { ...this.config };
   }
 
-  async updateConfig(updates: Partial<NamiConfig>): Promise<NamiConfig> {
+  async updateConfig(updates: Partial<NamiConfig>, actor?: string): Promise<NamiConfig> {
     this.config = { ...this.config, ...updates };
     saveJson(CONFIG_FILE, this.config);
     const { openRouterApiKey: _, ...safeConfig } = this.config;
     dbSet("config", safeConfig).catch(() => {});
+    const changedKeys = Object.keys(updates).filter(k => k !== "openRouterApiKey");
+    const hasSensitiveKeys = Object.keys(updates).some(k => k === "openRouterApiKey");
+    if (changedKeys.length > 0 || hasSensitiveKeys) {
+      const summary = changedKeys.length > 0 ? `Config updated: ${changedKeys.join(", ")}${hasSensitiveKeys ? " + sensitive fields" : ""}` : "Config updated: sensitive fields";
+      logAudit("updated", "config", "system-config", "System Config", actorFromName(actor), summary);
+    }
     return { ...this.config };
   }
 
@@ -807,6 +833,7 @@ export class MemStorage implements IStorage {
     this.memories.set(id, memory);
     this.persistMemories();
     dbUpsertRow("nami_memories", memory.id, memory).catch((e) => console.log(`[storage] DB memory insert error: ${e.message}`));
+    logAudit("created", "memory", id, data.category, actorFromName(data.createdBy), `Memory created in category "${data.category}"`);
     return memory;
   }
 
@@ -817,13 +844,21 @@ export class MemStorage implements IStorage {
     this.memories.set(id, updated);
     this.persistMemories();
     dbUpsertRow("nami_memories", updated.id, updated).catch((e) => console.log(`[storage] DB memory update error: ${e.message}`));
+    const meaningfulKeys = Object.keys(updates).filter(k => !["lastAccessedAt"].includes(k));
+    if (meaningfulKeys.length > 0) {
+      logAudit("updated", "memory", id, updated.category, actorFromName(updates.lastModifiedBy), `Memory updated: ${meaningfulKeys.join(", ")}`);
+    }
     return updated;
   }
 
-  async deleteMemory(id: string): Promise<boolean> {
+  async deleteMemory(id: string, actor?: string): Promise<boolean> {
+    const memory = this.memories.get(id);
     const result = this.memories.delete(id);
     this.persistMemories();
-    if (result) dbDeleteRow("nami_memories", id).catch((e) => console.log(`[storage] DB memory delete error: ${e.message}`));
+    if (result) {
+      dbDeleteRow("nami_memories", id).catch((e) => console.log(`[storage] DB memory delete error: ${e.message}`));
+      logAudit("deleted", "memory", id, memory?.category || id, actorFromName(actor), `Memory deleted from category "${memory?.category || "unknown"}"`);
+    }
     return result;
   }
 
@@ -964,17 +999,25 @@ export class MemStorage implements IStorage {
       ...data,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
+      createdBy: existing?.createdBy || data.createdBy || data.lastEditedBy,
+      lastModifiedBy: data.lastModifiedBy || data.lastEditedBy,
     };
     this.docs.set(data.slug, doc);
     this.persistDocs();
     dbUpsertByKey("nami_docs", "slug", doc.slug, doc).catch((e) => console.log(`[storage] DB doc upsert error: ${e.message}`));
+    const action = existing ? "updated" : "created";
+    logAudit(action, "doc_page", doc.slug, doc.title, actorFromName(data.lastEditedBy), `Doc "${doc.title}" ${action}`);
     return doc;
   }
 
-  async deleteDoc(slug: string): Promise<boolean> {
+  async deleteDoc(slug: string, actor?: string): Promise<boolean> {
+    const doc = this.docs.get(slug);
     const result = this.docs.delete(slug);
     this.persistDocs();
-    if (result) dbDeleteByKey("nami_docs", "slug", slug).catch((e) => console.log(`[storage] DB doc delete error: ${e.message}`));
+    if (result) {
+      dbDeleteByKey("nami_docs", "slug", slug).catch((e) => console.log(`[storage] DB doc delete error: ${e.message}`));
+      logAudit("deleted", "doc_page", slug, doc?.title || slug, actorFromName(actor), `Doc "${doc?.title || slug}" deleted`);
+    }
     return result;
   }
 

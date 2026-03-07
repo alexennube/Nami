@@ -119,6 +119,12 @@ function CardDetailDialog({ card, open, onClose }: { card: KanbanCard | null; op
               </Badge>
             )}
           </DialogDescription>
+          {(card.createdBy || card.lastModifiedBy) && (
+            <div className="flex gap-3 text-[10px] text-muted-foreground mt-1">
+              {card.createdBy && <span>Created by: {card.createdBy}</span>}
+              {card.lastModifiedBy && <span>Last modified by: {card.lastModifiedBy}</span>}
+            </div>
+          )}
         </DialogHeader>
 
         <div className="flex-1 min-h-0 flex flex-col border rounded-md bg-muted/20">

@@ -147,8 +147,14 @@ export default function MemoryPage() {
                           <span className="text-[10px] text-muted-foreground">{memory.importance}</span>
                         </div>
                         <span className="text-[10px] text-muted-foreground font-mono">
-                          {new Date(memory.createdAt).toLocaleDateString()}
+                          Created: {new Date(memory.createdAt).toLocaleDateString()}
                         </span>
+                        {memory.createdBy && (
+                          <span className="text-[10px] text-muted-foreground">by {memory.createdBy}</span>
+                        )}
+                        {memory.lastModifiedBy && (
+                          <span className="text-[10px] text-muted-foreground">· Modified by {memory.lastModifiedBy}</span>
+                        )}
                       </div>
                       <p className="text-xs text-foreground/80">{memory.content}</p>
                     </div>

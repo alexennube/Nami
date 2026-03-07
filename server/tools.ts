@@ -5,6 +5,7 @@ import { log } from "./index";
 import { storage } from "./storage";
 import { dbSaveWorkspaceFile, dbDeleteWorkspaceFile, dbGetKanbanCards, dbGetKanbanComments, dbAddKanbanComment, dbGetKanbanColumns, dbUpsertKanbanCard, dbDeleteKanbanCard, dbUpsertKanbanColumn, dbDeleteKanbanColumn, dbGetCrmContacts, dbGetCrmContact, dbGetCrmActivities, dbAddCrmActivity, dbGetCrmContactComments, dbAddCrmContactComment, dbUpsertCrmContact, dbDeleteCrmContact, dbGetCrmAccounts, dbGetCrmAccount, dbUpsertCrmAccount, dbDeleteCrmAccount, dbGetCrmSequences, dbGetCrmSequence, dbUpsertCrmSequence, dbDeleteCrmSequence } from "./db-persist";
 import crypto from "crypto";
+import { logAudit } from "./audit";
 
 type EngineFunctions = {
   createSwarmWithQueen: (data: { name: string; goal: string; objective: string; maxCycles?: number }) => Promise<any>;
@@ -1367,8 +1368,11 @@ const kanbanTool: NamiTool = {
           labels: labels || [],
           createdAt: now,
           updatedAt: now,
+          createdBy: authorName,
+          lastModifiedBy: authorName,
         };
         await dbUpsertKanbanCard(card);
+        logAudit("created", "kanban_card", card.id, title, { actorType: "agent", actorName: authorName }, `Card "${title}" created by ${authorName}`);
         return `Card created: **${title}** (ID: ${card.id}) in column ${columnId}.`;
       }
 
@@ -1385,14 +1389,19 @@ const kanbanTool: NamiTool = {
           ...(status !== undefined && { status }),
           ...(labels !== undefined && { labels }),
           updatedAt: new Date().toISOString(),
+          lastModifiedBy: authorName,
         };
         await dbUpsertKanbanCard(updated);
+        logAudit("updated", "kanban_card", cardId, updated.title, { actorType: "agent", actorName: authorName }, `Card "${updated.title}" updated by ${authorName}`);
         return `Card updated: **${updated.title}** (ID: ${cardId}).`;
       }
 
       if (action === "delete_card") {
         if (!cardId) return "Error: card_id is required for delete_card.";
+        const cards = await dbGetKanbanCards();
+        const deletedCard = cards.find((c: any) => c.id === cardId);
         await dbDeleteKanbanCard(cardId);
+        logAudit("deleted", "kanban_card", cardId, deletedCard?.title || cardId, { actorType: "agent", actorName: authorName }, `Card "${deletedCard?.title || cardId}" deleted by ${authorName}`);
         return `Card ${cardId} deleted.`;
       }
 
@@ -1625,8 +1634,10 @@ The sequence model is a task list for agents: the sequence defines step types an
           tags: [] as string[], stage: "lead",
           sequenceId: null, sequenceStep: null,
           createdAt: now, updatedAt: now,
+          createdBy: authorName, lastModifiedBy: authorName,
         };
         await dbUpsertCrmContact(contact);
+        logAudit("created", "crm_contact", contact.id, `${firstName} ${lastName}`, { actorType: "agent", actorName: authorName }, `CRM contact "${firstName} ${lastName}" created by ${authorName}`);
         return `Contact created: **${firstName} ${lastName}** (${contact.id.substring(0, 8)}…) | ${contact.email || "no email"} | ${contact.company || "no company"}`;
       }
 
@@ -1635,6 +1646,7 @@ The sequence model is a task list for agents: the sequence defines step types an
         const c = await dbGetCrmContact(contactId);
         if (!c) return "Error: Contact not found.";
         await dbDeleteCrmContact(contactId);
+        logAudit("deleted", "crm_contact", contactId, `${c.firstName} ${c.lastName}`, { actorType: "agent", actorName: authorName }, `CRM contact "${c.firstName} ${c.lastName}" deleted by ${authorName}`);
         return `Contact deleted: **${c.firstName} ${c.lastName}** (${contactId.substring(0, 8)}…)`;
       }
 
@@ -1651,8 +1663,10 @@ The sequence model is a task list for agents: the sequence defines step types an
           website: (args.metadata as any)?.website || "",
           size: (args.metadata as any)?.size || "",
           createdAt: now, updatedAt: now,
+          createdBy: authorName, lastModifiedBy: authorName,
         };
         await dbUpsertCrmAccount(account);
+        logAudit("created", "crm_account", account.id, name, { actorType: "agent", actorName: authorName }, `CRM account "${name}" created by ${authorName}`);
         return `Account created: **${name}** (${account.id.substring(0, 8)}…)`;
       }
 
@@ -1662,6 +1676,7 @@ The sequence model is a task list for agents: the sequence defines step types an
         const a = await dbGetCrmAccount(accId);
         if (!a) return "Error: Account not found.";
         await dbDeleteCrmAccount(accId);
+        logAudit("deleted", "crm_account", accId, a.name, { actorType: "agent", actorName: authorName }, `CRM account "${a.name}" deleted by ${authorName}`);
         return `Account deleted: **${a.name}** (${accId.substring(0, 8)}…). Associated contacts have been unlinked.`;
       }
 
@@ -1679,8 +1694,9 @@ The sequence model is a task list for agents: the sequence defines step types an
         const a = await dbGetCrmAccount(accId);
         if (!a) return "Error: Account not found.";
         const updates = args.updates as Record<string, any> || {};
-        const updated = { ...a, ...updates, id: accId, updatedAt: new Date().toISOString() };
+        const updated = { ...a, ...updates, id: accId, updatedAt: new Date().toISOString(), lastModifiedBy: authorName };
         await dbUpsertCrmAccount(updated);
+        logAudit("updated", "crm_account", accId, a.name, { actorType: "agent", actorName: authorName }, `CRM account "${a.name}" updated by ${authorName}`);
         return `Account **${a.name}** updated.`;
       }
 
@@ -1725,8 +1741,9 @@ The sequence model is a task list for agents: the sequence defines step types an
         const c = await dbGetCrmContact(contactId);
         if (!c) return "Error: Contact not found.";
         const updates = args.updates as Record<string, any> || {};
-        const updated = { ...c, ...updates, id: contactId, updatedAt: new Date().toISOString() };
+        const updated = { ...c, ...updates, id: contactId, updatedAt: new Date().toISOString(), lastModifiedBy: authorName };
         await dbUpsertCrmContact(updated);
+        logAudit("updated", "crm_contact", contactId, `${c.firstName} ${c.lastName}`, { actorType: "agent", actorName: authorName }, `CRM contact "${c.firstName} ${c.lastName}" updated by ${authorName}`);
         return `Contact ${c.firstName} ${c.lastName} updated.`;
       }
 
@@ -1820,8 +1837,11 @@ The sequence model is a task list for agents: the sequence defines step types an
           contactIds: [] as string[],
           createdAt: now,
           updatedAt: now,
+          createdBy: authorName,
+          lastModifiedBy: authorName,
         };
         await dbUpsertCrmSequence(sequence);
+        logAudit("created", "crm_sequence", sequence.id, name, { actorType: "agent", actorName: authorName }, `CRM sequence "${name}" created by ${authorName}`);
         return `Sequence created: **${name}** (${sequence.id.substring(0, 8)}…) | ${steps.length} steps | Status: draft`;
       }
 
@@ -1830,8 +1850,9 @@ The sequence model is a task list for agents: the sequence defines step types an
         const s = await dbGetCrmSequence(sequenceId);
         if (!s) return "Error: Sequence not found.";
         const updates = args.updates as Record<string, any> || {};
-        const updated = { ...s, ...updates, id: sequenceId, updatedAt: new Date().toISOString() };
+        const updated = { ...s, ...updates, id: sequenceId, updatedAt: new Date().toISOString(), lastModifiedBy: authorName };
         await dbUpsertCrmSequence(updated);
+        logAudit("updated", "crm_sequence", sequenceId, s.name, { actorType: "agent", actorName: authorName }, `CRM sequence "${s.name}" updated by ${authorName}`);
         return `Sequence **${s.name}** updated.`;
       }
 
@@ -1852,6 +1873,7 @@ The sequence model is a task list for agents: the sequence defines step types an
           }
         }
         await dbDeleteCrmSequence(sequenceId);
+        logAudit("deleted", "crm_sequence", sequenceId, s.name, { actorType: "agent", actorName: authorName }, `CRM sequence "${s.name}" deleted by ${authorName}`);
         return `Sequence deleted: **${s.name}** (${sequenceId.substring(0, 8)}…). Enrolled contacts have been unenrolled.`;
       }
 

@@ -399,7 +399,14 @@ export default function AccountDetail() {
                 <div>
                   <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Created</span>
                   <p className="text-xs mt-0.5">{new Date(account.createdAt).toLocaleDateString()}</p>
+                  {account.createdBy && <p className="text-[10px] text-muted-foreground">by {account.createdBy}</p>}
                 </div>
+                {account.lastModifiedBy && (
+                  <div>
+                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Last Modified By</span>
+                    <p className="text-xs mt-0.5">{account.lastModifiedBy}</p>
+                  </div>
+                )}
                 {account.description && (
                   <div className="md:col-span-2">
                     <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Description</span>

@@ -168,6 +168,12 @@ function AgentCard({ agent }: { agent: Agent }) {
             <MessageSquare className="w-3 h-3" />
             <span>{agent.messagesProcessed} messages</span>
           </div>
+          {agent.createdBy && (
+            <span>Created by: {agent.createdBy}</span>
+          )}
+          {agent.lastModifiedBy && (
+            <span>Modified by: {agent.lastModifiedBy}</span>
+          )}
         </div>
 
         <div className="flex items-center gap-1 mt-3 flex-wrap">

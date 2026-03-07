@@ -11,7 +11,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Switch } from "@/components/ui/switch";
-import { Settings2, Key, Waypoints, Globe, Save, ExternalLink, Search, Check, Loader2, Brain, Twitter, CheckCircle, XCircle, AlertTriangle, Send, Sparkles, Plug, Monitor } from "lucide-react";
+import { Settings2, Key, Waypoints, Globe, Save, ExternalLink, Search, Check, Loader2, Brain, Twitter, CheckCircle, XCircle, AlertTriangle, Send, Sparkles, Plug, Monitor, ClipboardList, Download, ChevronLeft, ChevronRight } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { NamiConfig } from "@shared/schema";
 
@@ -469,6 +470,8 @@ export default function Settings() {
 
       <NamiextendCard />
 
+      <AuditTrailCard />
+
       <div className="flex justify-end">
         <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-settings">
           <Save className="w-4 h-4 mr-2" />
@@ -732,6 +735,214 @@ function NamiextendCard() {
             to click, type, scroll, navigate, or read page content in your browser.
           </p>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface AuditEntry {
+  id: string;
+  timestamp: string;
+  action: string;
+  recordType: string;
+  recordId: string;
+  recordName: string;
+  actorType: string;
+  actorName: string;
+  summary: string;
+}
+
+function AuditTrailCard() {
+  const [page, setPage] = useState(1);
+  const [filterAction, setFilterAction] = useState<string>("all");
+  const [filterRecordType, setFilterRecordType] = useState<string>("all");
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
+  const [searchText, setSearchText] = useState<string>("");
+  const [debouncedSearch, setDebouncedSearch] = useState<string>("");
+  const limit = 20;
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchText);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchText]);
+
+  const queryParams = new URLSearchParams();
+  queryParams.set("page", String(page));
+  queryParams.set("limit", String(limit));
+  if (filterAction !== "all") queryParams.set("action", filterAction);
+  if (filterRecordType !== "all") queryParams.set("recordType", filterRecordType);
+  if (startDate) queryParams.set("startDate", new Date(startDate).toISOString());
+  if (endDate) queryParams.set("endDate", new Date(endDate + "T23:59:59").toISOString());
+  if (debouncedSearch) queryParams.set("search", debouncedSearch);
+
+  const { data, isLoading } = useQuery<{ entries: AuditEntry[]; total: number; page: number; limit: number }>({
+    queryKey: ["/api/audit-log", page, filterAction, filterRecordType, startDate, endDate, debouncedSearch],
+    queryFn: async () => {
+      const res = await fetch(`/api/audit-log?${queryParams.toString()}`);
+      if (!res.ok) throw new Error("Failed to fetch audit log");
+      return res.json();
+    },
+  });
+
+  const totalPages = data ? Math.ceil(data.total / limit) : 1;
+
+  const handleCsvDownload = () => {
+    const a = document.createElement("a");
+    a.href = "/api/audit-log/csv";
+    a.download = `audit-log-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+  };
+
+  const actionColors: Record<string, string> = {
+    created: "bg-green-500/10 text-green-600",
+    updated: "bg-blue-500/10 text-blue-600",
+    deleted: "bg-red-500/10 text-red-600",
+    executed: "bg-purple-500/10 text-purple-600",
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <ClipboardList className="w-4 h-4 text-primary" />
+          <CardTitle className="text-sm">Audit Trail</CardTitle>
+          <Badge variant="secondary" className="text-[9px] ml-auto no-default-active-elevate">
+            {data?.total ?? 0} entries
+          </Badge>
+        </div>
+        <CardDescription className="text-[11px]">
+          Track all changes across agents, swarms, configs, and records.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+            <Input
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              placeholder="Search records..."
+              className="w-[160px] h-8 text-xs pl-7"
+              data-testid="input-audit-search"
+            />
+          </div>
+          <Select value={filterAction} onValueChange={(v) => { setFilterAction(v); setPage(1); }}>
+            <SelectTrigger className="w-[130px] h-8 text-xs" data-testid="select-audit-action">
+              <SelectValue placeholder="All Actions" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Actions</SelectItem>
+              <SelectItem value="created">Created</SelectItem>
+              <SelectItem value="updated">Updated</SelectItem>
+              <SelectItem value="deleted">Deleted</SelectItem>
+              <SelectItem value="executed">Executed</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={filterRecordType} onValueChange={(v) => { setFilterRecordType(v); setPage(1); }}>
+            <SelectTrigger className="w-[140px] h-8 text-xs" data-testid="select-audit-record-type">
+              <SelectValue placeholder="All Types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              <SelectItem value="agent">Agent</SelectItem>
+              <SelectItem value="swarm">Swarm</SelectItem>
+              <SelectItem value="config">Config</SelectItem>
+              <SelectItem value="memory">Memory</SelectItem>
+              <SelectItem value="doc_page">Doc Page</SelectItem>
+              <SelectItem value="kanban_card">Kanban Card</SelectItem>
+              <SelectItem value="crm_account">CRM Account</SelectItem>
+              <SelectItem value="crm_contact">CRM Contact</SelectItem>
+              <SelectItem value="crm_sequence">CRM Sequence</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            type="date"
+            value={startDate}
+            onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+            className="w-[130px] h-8 text-xs"
+            placeholder="Start date"
+            data-testid="input-audit-start-date"
+          />
+          <Input
+            type="date"
+            value={endDate}
+            onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+            className="w-[130px] h-8 text-xs"
+            placeholder="End date"
+            data-testid="input-audit-end-date"
+          />
+          <Button variant="outline" size="sm" className="ml-auto h-8 text-xs" onClick={handleCsvDownload} data-testid="button-download-audit-csv">
+            <Download className="w-3 h-3 mr-1" />
+            CSV
+          </Button>
+        </div>
+
+        {isLoading ? (
+          <div className="space-y-2">
+            {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+          </div>
+        ) : !data?.entries?.length ? (
+          <div className="text-center py-8 text-xs text-muted-foreground">
+            No audit entries found.
+          </div>
+        ) : (
+          <div className="border rounded-md overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs" data-testid="table-audit-log">
+                <thead>
+                  <tr className="bg-muted/50 border-b">
+                    <th className="text-left p-2 font-medium">Time</th>
+                    <th className="text-left p-2 font-medium">Action</th>
+                    <th className="text-left p-2 font-medium">Type</th>
+                    <th className="text-left p-2 font-medium">Record</th>
+                    <th className="text-left p-2 font-medium">Actor</th>
+                    <th className="text-left p-2 font-medium">Summary</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.entries.map((entry) => (
+                    <tr key={entry.id} className="border-b last:border-0 hover:bg-muted/30" data-testid={`row-audit-${entry.id}`}>
+                      <td className="p-2 whitespace-nowrap text-muted-foreground">
+                        {new Date(entry.timestamp).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      </td>
+                      <td className="p-2">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${actionColors[entry.action] || "bg-muted text-muted-foreground"}`}>
+                          {entry.action}
+                        </span>
+                      </td>
+                      <td className="p-2 whitespace-nowrap">{entry.recordType.replace(/_/g, " ")}</td>
+                      <td className="p-2 max-w-[150px] truncate" title={entry.recordName}>{entry.recordName}</td>
+                      <td className="p-2 whitespace-nowrap">
+                        <span className="text-muted-foreground">{entry.actorName}</span>
+                      </td>
+                      <td className="p-2 max-w-[200px] truncate text-muted-foreground" title={entry.summary}>{entry.summary}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-muted-foreground">
+              Page {page} of {totalPages} ({data?.total} total)
+            </span>
+            <div className="flex gap-1">
+              <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={page <= 1} onClick={() => setPage(p => p - 1)} data-testid="button-audit-prev">
+                <ChevronLeft className="w-3 h-3" />
+              </Button>
+              <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} data-testid="button-audit-next">
+                <ChevronRight className="w-3 h-3" />
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
