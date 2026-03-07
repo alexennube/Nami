@@ -5,7 +5,6 @@ This document explains how to integrate Model Context Protocol (MCP) tools into 
 
 ## Available MCP Tools
 The system currently supports integration with:
-- Ennube MCP server for AI-powered cloud infrastructure
 - Zoho CRM API integrations
 - Clari sales data connections
 
@@ -29,7 +28,6 @@ The system currently supports integration with:
 
 ## Configuration
 To enable MCP integration, ensure the following environment variables are set:
-- `ENNUBE_MCP_APIKEY` - Authentication key for Ennube MCP services
 - `MCP_SERVER_URL` - Base URL for MCP server endpoints
 
 ## Best Practices

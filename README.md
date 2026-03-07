@@ -10,7 +10,7 @@ Autonomous multi-agent orchestration system with heartbeat-driven execution, swa
 - **Swarm Workflows** - Create goal-driven agent swarms with autonomous queens that delegate, monitor, and review work
 - **Scheduled Swarms** - Recurring execution patterns (interval, daily, weekly) with auto-sleep between runs
 - **Engine Mind** - Self-healing tool execution, auto-compaction, and spawn validation via Pi framework
-- **Workspace Tools** - File I/O, shell execution, web browsing, web search, Google Workspace, MCP integration
+- **Workspace Tools** - File I/O, shell execution, web browsing, web search, Google Workspace
 - **Usage Tracking** - Per-call token and cost tracking with breakdowns by source, model, and swarm
 - **Documentation System** - Built-in docs that agents can read and write, editable from the UI
 - **Real-time UI** - WebSocket-powered dark-themed interface with chat, activity feeds, and engine controls
@@ -35,7 +35,6 @@ Open `http://localhost:5000` in your browser.
 |----------|----------|-------------|
 | `OPENROUTER_API_KEY` | Yes | Your OpenRouter.ai API key ([get one here](https://openrouter.ai/keys)) |
 | `SESSION_SECRET` | No | Session secret (auto-generated if not set) |
-| `ENNUBE_MCP_APIKEY` | No | Ennube AI MCP server key (optional tool) |
 | `PORT` | No | Server port (default: 5000) |
 
 You can also configure your API key through the Settings page in the UI (BYOK).
@@ -82,7 +81,6 @@ Nami has access to these tools (toggleable in the Tools page):
 | `web_browse` | Browse web pages (headless Chromium) |
 | `web_search` | Real-time web search via Perplexity |
 | `google_workspace` | Gmail, Calendar, Drive, Sheets, Docs |
-| `ennube_mcp` | Ennube AI MCP server tools |
 | `create_swarm` | Create new swarms with queens |
 | `manage_swarm` | Pause, resume, cancel swarms |
 | `pin_chat` | Pin important conversations |

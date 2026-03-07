@@ -785,122 +785,6 @@ const googleWorkspaceTool: NamiTool = {
   },
 };
 
-const ennubeMcpTool: NamiTool = {
-  name: "ennube_mcp",
-  description: "Call tools on the Ennube AI MCP server. Ennube provides AI-powered cloud infrastructure, deployment, and management capabilities. Use this to interact with Ennube's tool ecosystem.",
-  category: "mcp",
-  enabled: true,
-  parameters: {
-    type: "object",
-    properties: {
-      method: {
-        type: "string",
-        description: "The MCP method to call: 'tools/list' to see available tools, or 'tools/call' to invoke a specific tool.",
-        enum: ["tools/list", "tools/call"],
-      },
-      tool_name: {
-        type: "string",
-        description: "When method is 'tools/call', the name of the tool to invoke.",
-      },
-      tool_args: {
-        type: "string",
-        description: "When method is 'tools/call', a JSON string of arguments to pass to the tool.",
-      },
-    },
-    required: ["method"],
-  },
-  execute: async (args) => {
-    const apiKey = process.env.ENNUBE_MCP_APIKEY;
-    if (!apiKey) return "Error: ENNUBE_MCP_APIKEY not configured. Set it in environment variables.";
-
-    const method = args.method as string;
-    const mcpUrl = "https://dev.ennube.ai/api/tools/mcp";
-
-    let body: any;
-    if (method === "tools/list") {
-      body = { jsonrpc: "2.0", id: 1, method: "tools/list" };
-    } else if (method === "tools/call") {
-      const toolName = args.tool_name as string;
-      if (!toolName) return "Error: tool_name is required for tools/call method.";
-
-      let toolArgs: Record<string, any> = {};
-      if (args.tool_args) {
-        try {
-          toolArgs = JSON.parse(args.tool_args as string);
-        } catch {
-          return "Error: tool_args must be valid JSON.";
-        }
-      }
-
-      body = {
-        jsonrpc: "2.0",
-        id: 1,
-        method: "tools/call",
-        params: { name: toolName, arguments: toolArgs },
-      };
-    } else {
-      return "Error: method must be 'tools/list' or 'tools/call'.";
-    }
-
-    try {
-      const response = await fetch(mcpUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept": "application/json, text/event-stream",
-          "Authorization": `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errBody = await response.text();
-        return `Error: Ennube MCP returned ${response.status} ${response.statusText}: ${errBody}`;
-      }
-
-      const contentType = response.headers.get("content-type") || "";
-      let data: any;
-
-      if (contentType.includes("text/event-stream")) {
-        const rawText = await response.text();
-        const lines = rawText.split("\n");
-        let jsonPayload = "";
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            jsonPayload += line.slice(6);
-          }
-        }
-        if (!jsonPayload) return `Error: No data received from Ennube MCP SSE stream.`;
-        data = JSON.parse(jsonPayload);
-      } else {
-        data = await response.json() as any;
-      }
-
-      if (data.error) {
-        return `MCP Error: ${data.error.message || JSON.stringify(data.error)}`;
-      }
-
-      if (method === "tools/list" && data.result?.tools) {
-        const toolSummaries = data.result.tools.map((t: any) => {
-          const params = t.inputSchema?.properties
-            ? Object.keys(t.inputSchema.properties).join(", ")
-            : "none";
-          return `- **${t.name}**: ${t.description || t.title || "No description"}\n  Parameters: ${params}`;
-        });
-        const summary = `Found ${data.result.tools.length} tools on Ennube MCP:\n\n${toolSummaries.join("\n\n")}`;
-        log(`Tool ennube_mcp: ${method} -> ${data.result.tools.length} tools`, "tools");
-        return summary;
-      }
-
-      const result = JSON.stringify(data.result, null, 2);
-      log(`Tool ennube_mcp: ${method} -> ${result.length} chars`, "tools");
-      return result.length > 10000 ? result.substring(0, 10000) + "\n... (truncated)" : result;
-    } catch (err: any) {
-      return `Error calling Ennube MCP: ${err.message}`;
-    }
-  },
-};
-
 const webSearchTool: NamiTool = {
   name: "web_search",
   description: "Search the web using Perplexity AI via OpenRouter for real-time information. Use this to find current data, research topics, look up documentation, check news, or answer questions requiring up-to-date knowledge from the internet.",
@@ -2214,7 +2098,7 @@ The sequence model is a task list for agents: the sequence defines step types an
   },
 };
 
-const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, ennubeMcpTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool, browserControlTool, kanbanTool, crmTool];
+const allTools: NamiTool[] = [fileReadTool, fileWriteTool, fileEditTool, fileSearchTool, fileListTool, shellExecTool, serverRestartTool, selfInspectTool, webBrowseTool, webSearchTool, googleWorkspaceTool, createSwarmTool, manageSwarmTool, docsReadTool, docsWriteTool, xPostTweetTool, xDeleteTweetTool, xGetStatusTool, browserControlTool, kanbanTool, crmTool];
 
 export function getTools(): NamiTool[] {
   return allTools;

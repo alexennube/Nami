@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { FileText, FolderOpen, Terminal, Eye, PenTool, Globe, Mail, Cloud } from "lucide-react";
+import { FileText, FolderOpen, Terminal, Eye, PenTool, Globe, Mail } from "lucide-react";
 
 interface ToolInfo {
   name: string;
@@ -24,7 +24,6 @@ const iconMap: Record<string, any> = {
   self_inspect: Eye,
   web_browse: Globe,
   google_workspace: Mail,
-  ennube_mcp: Cloud,
 };
 
 const categoryLabels: Record<string, string> = {
