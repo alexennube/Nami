@@ -43,6 +43,37 @@ Nami employs a hierarchical agent structure: `Nami` (main orchestrator), `Spawn`
 - **Namiextend Browser Extension:** Password-protected WebSocket endpoint at `/ws/namiextend` for connecting a Chrome extension. Extension authenticates by sending `{ type: "auth", token: "<password>" }`. The `browser_control` tool lets AI agents click, type, scroll, navigate, and read page content in the user's browser. Actions are logged to Postgres (`nami_browser_logs` table). Connection password is managed in Settings UI.
 - **Integrations Page:** Dedicated `/integrations` page for managing external service accounts. Currently supports multiple Google accounts with add/remove/set-default/test operations. The default Google account's refresh token is used for Gemini API inference and gogCLI. Accounts are stored in `nami_google_accounts` Postgres table with email, refresh_token, display_name, avatar_url, and is_default flag. Google auth section moved from Settings to Integrations; Settings retains a status indicator with link to Integrations.
 
+## Project Structure
+```
+client/                  React SPA (Vite + Shadcn UI + Tailwind)
+  src/
+    pages/               Chat, Spawns, Swarms, CRM, Kanban, Files,
+                         Integrations, Settings, Usage, Docs, Engine Mind,
+                         Heartbeat, Thoughts, Memory, Skills, Activity...
+    components/          Sidebar, configurable table, status badge, theme toggle, UI kit
+    lib/                 WebSocket client, query client, theme provider, utils
+server/
+  index.ts               Express server entry point
+  engine.ts              Core orchestration (heartbeat, agents, swarms, chat)
+  openrouter.ts          OpenRouter.ai client with pricing cache
+  gemini.ts              Google Gemini inference client
+  tools.ts               Tool registry (file, shell, web, CRM, kanban, browser, X, MCP, docs)
+  storage.ts             In-memory storage with JSON disk persistence
+  db-persist.ts          PostgreSQL persistence layer
+  engine-mind.ts         Pi framework integration (self-healing, compaction)
+  audit.ts               Audit trail logging
+  namiextend.ts          Browser extension WebSocket bridge
+  routes.ts              REST API + WebSocket setup
+  x-api.ts               X (Twitter) API client
+  toolExecutionGuard.ts  Tool execution safety layer
+  toolValidation.ts      Tool input validation
+  static.ts              Static file serving
+  vite.ts                Vite dev server integration
+shared/
+  schema.ts              TypeScript types and Zod schemas
+.nami-data/              Runtime data (auto-created, gitignored)
+```
+
 ## External Dependencies
 - **OpenRouter.ai:** For multi-model AI inference via BYOK.
 - **Google Gemini API:** For AI inference, utilizing OAuth2 for authentication. Supports multiple Google accounts via the Integrations page. The default account's refresh token is used for API access and also provisions gogCLI for Google Workspace access (Gmail, Calendar, Drive, etc.).
