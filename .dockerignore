@@ -4,6 +4,7 @@ dist
 .git
 .gitignore
 .env
+.env.local
 .replit
 .config
 .local
@@ -11,4 +12,6 @@ dist
 .upm
 replit.md
 replit_agent
+attached_assets
+generated-icon.png
 *.log
