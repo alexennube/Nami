@@ -5,7 +5,7 @@ import { getToolsForLLM, executeToolCall, getEnabledTools, getToolByName } from 
 import { engineMind } from "./engine-mind";
 import { createGeminiClient } from "./gemini";
 
-export type InferenceProvider = "openrouter" | "gemini";
+export type InferenceProvider = "openrouter" | "gemini" | "lmstudio";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
@@ -107,9 +107,30 @@ export function calculateCost(model: string, promptTokens: number, completionTok
   return (promptTokens * pricing.prompt) + (completionTokens * pricing.completion);
 }
 
+export async function getLmStudioBaseUrl(): Promise<string> {
+  const config = await storage.getConfig();
+  const DEFAULT_URL = "http://localhost:1234/v1";
+  const envUrl = process.env.LM_STUDIO_BASE_URL;
+  const configUrl = config.lmStudioBaseUrl;
+  if (configUrl && configUrl !== DEFAULT_URL) return configUrl;
+  if (envUrl) return envUrl;
+  return configUrl || DEFAULT_URL;
+}
+
+export async function createLmStudioClient(): Promise<OpenAI> {
+  const baseURL = await getLmStudioBaseUrl();
+  return new OpenAI({
+    apiKey: "lm-studio",
+    baseURL,
+  });
+}
+
 export async function createInferenceClient(provider: InferenceProvider): Promise<OpenAI> {
   if (provider === "gemini") {
     return createGeminiClient();
+  }
+  if (provider === "lmstudio") {
+    return createLmStudioClient();
   }
   return createOpenRouterClient();
 }

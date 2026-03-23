@@ -26,7 +26,7 @@ interface ModelInfo {
   };
 }
 
-type Provider = "openrouter" | "gemini";
+type Provider = "openrouter" | "gemini" | "lmstudio";
 
 function ProviderToggle({ value, onChange, testId }: { value: Provider; onChange: (v: Provider) => void; testId: string }) {
   return (
@@ -46,6 +46,14 @@ function ProviderToggle({ value, onChange, testId }: { value: Provider; onChange
         data-testid={`${testId}-gemini`}
       >
         Gemini
+      </button>
+      <button
+        type="button"
+        className={`flex-1 px-3 py-1.5 text-xs font-medium transition-colors ${value === "lmstudio" ? "bg-primary text-primary-foreground" : "bg-background hover:bg-accent"}`}
+        onClick={() => onChange("lmstudio")}
+        data-testid={`${testId}-lmstudio`}
+      >
+        LM Studio
       </button>
     </div>
   );
@@ -181,6 +189,7 @@ export default function Settings() {
   const [apiKey, setApiKey] = useState("");
   const [namiProvider, setNamiProvider] = useState<Provider>("openrouter");
   const [engineProvider, setEngineProvider] = useState<Provider>("openrouter");
+  const [lmStudioBaseUrl, setLmStudioBaseUrl] = useState("http://localhost:1234/v1");
   const [defaultModel, setDefaultModel] = useState("openai/gpt-4o");
   const [engineMindModel, setEngineMindModel] = useState("");
   const [engineMindEnabled, setEngineMindEnabled] = useState(false);
@@ -190,11 +199,24 @@ export default function Settings() {
   const [maxTokens, setMaxTokens] = useState(4096);
   const [temperature, setTemperature] = useState(0.7);
 
+  const { data: lmStudioModels, isLoading: lmStudioModelsLoading } = useQuery<ModelInfo[]>({
+    queryKey: ["/api/lmstudio/models"],
+    enabled: namiProvider === "lmstudio" || engineProvider === "lmstudio",
+    queryFn: async () => {
+      const res = await fetch("/api/lmstudio/models", { credentials: "include" });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return Array.isArray(data) ? data : [];
+    },
+    retry: false,
+  });
+
   useEffect(() => {
     if (config) {
       setApiKey(config.openRouterApiKey || "");
       setNamiProvider(config.namiProvider || "openrouter");
       setEngineProvider(config.engineProvider || "openrouter");
+      setLmStudioBaseUrl(config.lmStudioBaseUrl || "http://localhost:1234/v1");
       setDefaultModel(config.defaultModel);
       setEngineMindModel(config.engineMindModel || "");
       setEngineMindEnabled(config.engineMindEnabled || false);
@@ -206,10 +228,10 @@ export default function Settings() {
     }
   }, [config]);
 
-  const namiModels = namiProvider === "gemini" ? geminiModels : openRouterModels;
-  const namiModelsLoading = namiProvider === "gemini" ? geminiModelsLoading : orModelsLoading;
-  const engineModels = engineProvider === "gemini" ? geminiModels : openRouterModels;
-  const engineModelsLoading = engineProvider === "gemini" ? geminiModelsLoading : orModelsLoading;
+  const namiModels = namiProvider === "lmstudio" ? lmStudioModels : namiProvider === "gemini" ? geminiModels : openRouterModels;
+  const namiModelsLoading = namiProvider === "lmstudio" ? lmStudioModelsLoading : namiProvider === "gemini" ? geminiModelsLoading : orModelsLoading;
+  const engineModels = engineProvider === "lmstudio" ? lmStudioModels : engineProvider === "gemini" ? geminiModels : openRouterModels;
+  const engineModelsLoading = engineProvider === "lmstudio" ? lmStudioModelsLoading : engineProvider === "gemini" ? geminiModelsLoading : orModelsLoading;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -217,6 +239,7 @@ export default function Settings() {
         openRouterApiKey: apiKey || undefined,
         namiProvider,
         engineProvider,
+        lmStudioBaseUrl,
         defaultModel,
         engineMindModel,
         engineMindEnabled,
@@ -230,6 +253,7 @@ export default function Settings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/config"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/lmstudio/models"] });
       toast({ title: "Settings saved", description: "Configuration updated successfully." });
     },
     onError: (err: Error) => {
@@ -327,6 +351,28 @@ export default function Settings() {
               Google accounts are managed on the{" "}
               <a href="/integrations" className="text-primary underline" data-testid="link-integrations-from-settings">Integrations page</a>.
             </p>
+          </div>
+
+          <div className="border-t pt-4 flex flex-col gap-2">
+            <Label className="text-xs flex items-center gap-1.5">
+              <Monitor className="w-3 h-3" />
+              LM Studio (Local Inference)
+            </Label>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="lmstudio-url" className="text-[11px] text-muted-foreground">Server URL</Label>
+              <Input
+                id="lmstudio-url"
+                type="text"
+                placeholder="http://localhost:1234/v1"
+                value={lmStudioBaseUrl}
+                onChange={(e) => setLmStudioBaseUrl(e.target.value)}
+                className="font-mono text-xs"
+                data-testid="input-lmstudio-url"
+              />
+              <p className="text-[10px] text-muted-foreground">
+                Point to your LM Studio local server. Start LM Studio, load a model, and enable the server.
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>

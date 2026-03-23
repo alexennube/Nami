@@ -156,6 +156,7 @@ export class MemStorage implements IStorage {
       geminiApiKey: "",
       namiProvider: "openrouter",
       engineProvider: "openrouter",
+      lmStudioBaseUrl: "http://localhost:1234/v1",
       defaultModel: "openai/gpt-4o",
       engineMindModel: "qwen/qwen3-coder-flash",
       engineMindEnabled: true,

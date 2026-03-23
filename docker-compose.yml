@@ -1,0 +1,37 @@
+services:
+  nami:
+    build: .
+    container_name: nami
+    restart: unless-stopped
+    ports:
+      - "${PORT:-5000}:5000"
+    env_file: .env
+    environment:
+      - DATABASE_URL=postgresql://nami:nami@postgres:5432/nami
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - nami-data:/app/.nami-data
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: nami-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nami
+      POSTGRES_PASSWORD: nami
+      POSTGRES_DB: nami
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nami"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  pg-data:
+  nami-data:

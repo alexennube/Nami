@@ -234,8 +234,9 @@ export type ToolDefinition = z.infer<typeof toolDefinitionSchema>;
 export const namiConfigSchema = z.object({
   openRouterApiKey: z.string().optional(),
   geminiApiKey: z.string().optional(),
-  namiProvider: z.enum(["openrouter", "gemini"]).default("openrouter"),
-  engineProvider: z.enum(["openrouter", "gemini"]).default("openrouter"),
+  namiProvider: z.enum(["openrouter", "gemini", "lmstudio"]).default("openrouter"),
+  engineProvider: z.enum(["openrouter", "gemini", "lmstudio"]).default("openrouter"),
+  lmStudioBaseUrl: z.string().default("http://localhost:1234/v1"),
   defaultModel: z.string().default("openai/gpt-4o"),
   engineMindModel: z.string().default(""),
   engineMindEnabled: z.boolean().default(false),

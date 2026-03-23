@@ -1,12 +1,12 @@
 # Nami
 
-Autonomous multi-agent orchestration system with heartbeat-driven execution, swarm workflows, and OpenRouter.ai BYOK inference.
+Autonomous multi-agent orchestration system with heartbeat-driven execution, swarm workflows, and multi-provider AI inference.
 
 ## Features
 
 - **Autonomous Operation** — Auto-boots on start with a configurable heartbeat that continuously drives agent activity
 - **Multi-Agent Hierarchy** — Nami (brain) → Spawns (workers) → Swarms (coordinated workflows) → SwarmQueens (autonomous QA managers)
-- **400+ AI Models** — OpenRouter.ai integration with BYOK (Bring Your Own Key) support, plus Google Gemini via OAuth2
+- **Multi-Provider Inference** — OpenRouter.ai (400+ cloud models), Google Gemini (OAuth2), and LM Studio (local/private models)
 - **Swarm Workflows** — Create goal-driven agent swarms with autonomous queens that delegate, monitor, and review work
 - **Scheduled Swarms** — Recurring execution patterns (interval, daily, weekly) with auto-sleep between runs
 - **Engine Mind** — Self-healing tool execution, auto-compaction, and spawn validation via Pi framework
@@ -23,37 +23,165 @@ Autonomous multi-agent orchestration system with heartbeat-driven execution, swa
 - **Real-time UI** — WebSocket-powered dark-themed interface with chat, activity feeds, and engine controls
 - **Dual Persistence** — Data is written to both disk (`.nami-data/` JSON) and PostgreSQL for resilience across restarts and deployments
 
-## Quick Start
+---
+
+## Installation (Docker — Recommended)
+
+Docker keeps everything isolated so nothing is installed on your computer besides Docker itself. This is the safest and easiest way to run Nami.
+
+### Prerequisites
+
+1. **Install Docker Desktop**
+   - **Windows:** Download from [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/) and run the installer. You may need to enable WSL 2 during setup — Docker will walk you through it.
+   - **Mac:** Download from the same link above and drag it to your Applications folder.
+   - **Linux:** Follow the instructions at [docs.docker.com/engine/install](https://docs.docker.com/engine/install/) for your distribution.
+
+2. **Verify Docker is running**
+   Open a terminal (Command Prompt, PowerShell, or Terminal) and run:
+   ```bash
+   docker --version
+   ```
+   You should see something like `Docker version 24.x.x`. If you get an error, make sure Docker Desktop is open and running.
+
+### Step-by-Step Setup
+
+1. **Download the project**
+   ```bash
+   git clone <your-repo-url>
+   cd nami
+   ```
+
+2. **Create your configuration file**
+   ```bash
+   cp .env.example .env
+   ```
+
+3. **Edit the `.env` file** with a text editor and fill in your values:
+   - `NAMI_USERNAME` and `NAMI_PASSWORD` — These are your login credentials for the Nami web interface (pick any username and password you want).
+   - `OPENROUTER_API_KEY` — Get a free key at [openrouter.ai/keys](https://openrouter.ai/keys). This gives you access to 400+ AI models. *Or skip this and use LM Studio for fully local/private inference (see below).*
+
+4. **Start Nami**
+   ```bash
+   docker compose up -d
+   ```
+   The first time you run this, Docker will download everything it needs and build the app. This takes a few minutes. After that, it starts in seconds.
+
+5. **Open Nami in your browser**
+   Go to [http://localhost:5000](http://localhost:5000) and log in with the username and password you set in step 3.
+
+### Useful Commands
+
+| Command | What it does |
+|---------|-------------|
+| `docker compose up -d` | Start Nami in the background |
+| `docker compose down` | Stop Nami |
+| `docker compose logs -f nami` | Watch live logs |
+| `docker compose up -d --build` | Rebuild after pulling updates |
+| `docker compose down -v` | Stop and delete all data (fresh start) |
+
+### Updating
+
+When a new version is available:
+```bash
+git pull
+docker compose up -d --build
+```
+
+---
+
+## Using LM Studio (Local AI Models)
+
+LM Studio lets you run AI models entirely on your own computer — no API keys needed, fully private, no data leaves your machine.
+
+### Setup
+
+1. **Download LM Studio** from [lmstudio.ai](https://lmstudio.ai/) and install it.
+
+2. **Download a model** — Open LM Studio, go to the search tab, and download a model. Good starting choices:
+   - `Qwen2.5-7B-Instruct` — Fast, good for general tasks
+   - `Llama-3.1-8B-Instruct` — Well-rounded
+   - `Mistral-7B-Instruct` — Lightweight and capable
+
+3. **Start the local server** — In LM Studio, go to the "Local Server" tab (left sidebar), load your model, and click "Start Server". It will run on `http://localhost:1234`.
+
+4. **Configure Nami to use LM Studio**
+   - **If running with Docker:** In your `.env` file, set:
+     ```
+     LM_STUDIO_BASE_URL=http://host.docker.internal:1234/v1
+     ```
+     Then restart: `docker compose up -d --build`
+   - **If running directly:** The default URL `http://localhost:1234/v1` will work automatically.
+
+5. **Switch the provider in Settings** — In Nami's web UI, go to Settings and switch the provider toggle from "OpenRouter" to "LM Studio". Your loaded model will appear in the model dropdown.
+
+> **Note:** LM Studio must be open and the server running whenever you use Nami with local inference. If LM Studio is closed, Nami won't be able to reach it.
+
+---
+
+## Manual Installation (Without Docker)
+
+If you prefer not to use Docker, you can run Nami directly. You'll need Node.js 20+ and PostgreSQL installed on your machine.
+
+### Prerequisites
+
+- [Node.js 20+](https://nodejs.org/)
+- [PostgreSQL 14+](https://www.postgresql.org/download/)
+
+### Setup
 
 ```bash
 git clone <your-repo-url>
 cd nami
 npm install
 cp .env.example .env
-# Edit .env with your OpenRouter API key
+```
+
+Edit `.env` and set at minimum:
+- `NAMI_USERNAME` and `NAMI_PASSWORD`
+- `OPENROUTER_API_KEY` (or use LM Studio)
+- `DATABASE_URL` — Your PostgreSQL connection string, e.g. `postgresql://user:pass@localhost:5432/nami`
+
+### Run in Development
+
+```bash
 npm run dev
 ```
 
-Open `http://localhost:5000` in your browser.
+### Run in Production
+
+```bash
+npm run build
+npm start
+```
+
+Open [http://localhost:5000](http://localhost:5000) in your browser.
+
+---
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `OPENROUTER_API_KEY` | Yes | Your OpenRouter.ai API key ([get one here](https://openrouter.ai/keys)) |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `SESSION_SECRET` | No | Session secret (auto-generated if not set) |
+| `NAMI_USERNAME` | Yes | Login username for the web UI |
+| `NAMI_PASSWORD` | Yes | Login password for the web UI |
+| `OPENROUTER_API_KEY` | No* | OpenRouter.ai API key ([get one](https://openrouter.ai/keys)) |
+| `LM_STUDIO_BASE_URL` | No | LM Studio server URL (default: `http://localhost:1234/v1`) |
+| `DATABASE_URL` | Yes** | PostgreSQL connection string |
 | `PORT` | No | Server port (default: 5000) |
-| `PERPLEXITY_API_KEY` | No | Perplexity API key for `web_search` tool |
-| `X_API_KEY` | No | X (Twitter) API key for `x_post_tweet` / `x_delete_tweet` |
-| `X_API_SECRET` | No | X (Twitter) API secret |
-| `X_ACCESS_TOKEN` | No | X (Twitter) access token |
-| `X_ACCESS_SECRET` | No | X (Twitter) access token secret |
 | `GOOGLE_CLIENT_ID` | No | Google OAuth2 client ID (for Gemini + Workspace) |
 | `GOOGLE_CLIENT_SECRET` | No | Google OAuth2 client secret |
-| `NAMIEXTEND_TOKEN` | No | Password for browser extension WebSocket auth |
+| `PERPLEXITY_API_KEY` | No | Perplexity API key for `web_search` tool |
+| `X_API_KEY` | No | X (Twitter) API key |
+| `X_API_SECRET` | No | X (Twitter) API secret |
+| `X_ACCESS_TOKEN` | No | X (Twitter) access token |
+| `X_ACCESS_TOKEN_SECRET` | No | X (Twitter) access token secret |
 
-You can also configure your OpenRouter API key through the Settings page in the UI (BYOK).
+\* At least one inference provider is required (OpenRouter API key, Google Gemini OAuth, or LM Studio running locally).
+\** Auto-configured when using Docker Compose.
+
+You can also configure API keys and providers through the Settings page in the web UI.
+
+---
 
 ## Architecture
 
@@ -68,7 +196,7 @@ client/                  React SPA (Vite + Shadcn UI + Tailwind)
 server/
   index.ts               Express server entry point
   engine.ts              Core orchestration (heartbeat, agents, swarms, chat)
-  openrouter.ts          OpenRouter.ai client with pricing cache
+  openrouter.ts          Multi-provider inference client (OpenRouter, Gemini, LM Studio)
   gemini.ts              Google Gemini inference client
   tools.ts               Tool registry (file, shell, web, CRM, kanban, browser, X, MCP, docs)
   storage.ts             In-memory storage with JSON disk persistence
@@ -93,125 +221,6 @@ shared/
 2. **Spawn** — Worker agents created by Nami for specific tasks.
 3. **Swarm** — Goal-driven group of agents. A swarm IS the workflow.
 4. **SwarmQueen** — Autonomous QA manager per swarm. Creates spawns, delegates tasks, reviews results. Cannot have its primary objective changed.
-
-## Available Tools
-
-Nami has access to these tools (toggleable in the Tools page):
-
-| Tool | Description |
-|------|-------------|
-| `file_read` | Read files from workspace |
-| `file_write` | Write/create files in workspace |
-| `file_edit` | Edit existing files with find-and-replace |
-| `file_search` | Search file contents by pattern |
-| `file_list` | List directory contents |
-| `shell_exec` | Execute shell commands |
-| `self_inspect` | Inspect Nami's own state |
-| `server_restart` | Restart the Nami server |
-| `web_browse` | Browse web pages (headless Chromium) |
-| `web_search` | Real-time web search via Perplexity |
-| `google_workspace` | Gmail, Calendar, Drive, Sheets, Docs |
-| `create_swarm` | Create new swarms with queens |
-| `manage_swarm` | Pause, resume, cancel swarms |
-| `docs_read` | Read documentation pages |
-| `docs_write` | Create or update documentation |
-| `x_post_tweet` | Post a tweet to X (Twitter) |
-| `x_delete_tweet` | Delete a tweet from X |
-| `x_get_status` | Check X API connection status |
-| `browser_control` | Control the user's browser via Namiextend |
-| `kanban` | Full CRUD on kanban columns, cards, and comments |
-| `crm` | Manage CRM accounts, contacts, sequences, and activities |
-
-## API Reference
-
-### Chat
-- `GET /api/chat` — Chat history (query `?sessionId=`)
-- `POST /api/chat` — Send message to Nami
-- `DELETE /api/chat` — Clear chat history
-- `GET /api/chat/sessions` — List sessions
-- `POST /api/chat/sessions` — Create session
-- `PATCH /api/chat/sessions/:id` — Rename session
-- `DELETE /api/chat/sessions/:id` — Delete session
-
-### Agents
-- `GET /api/agents` — List all agents
-- `POST /api/agents` — Create agent
-- `GET /api/agents/:id` — Agent details
-- `POST /api/agents/:id/action` — Trigger agent action
-- `POST /api/agents/:id/chat` — Chat with agent
-- `DELETE /api/agents/:id` — Delete agent
-
-### Swarms
-- `GET /api/swarms` — List all swarms
-- `POST /api/swarms` — Create swarm
-- `GET /api/swarms/:id` — Swarm details
-- `POST /api/swarms/:id/run` — Execute swarm
-- `POST /api/swarms/:id/action` — Swarm action (pause/resume/cancel)
-- `DELETE /api/swarms/:id` — Delete swarm
-
-### Engine
-- `POST /api/engine/start` — Start engine
-- `POST /api/engine/pause` — Pause engine
-- `POST /api/engine/stop` — Stop engine
-- `GET /api/engine/status` — Engine status
-
-### CRM
-- `GET/POST /api/crm/accounts` — List / create accounts
-- `GET/PATCH/DELETE /api/crm/accounts/:id` — Account CRUD
-- `GET/POST /api/crm/contacts` — List / create contacts
-- `GET/PATCH/DELETE /api/crm/contacts/:id` — Contact CRUD
-- `POST /api/crm/contacts/:id/analyze` — Contact intelligence report
-- `GET/POST /api/crm/sequences` — List / create sequences
-- `GET/PATCH/DELETE /api/crm/sequences/:id` — Sequence CRUD
-- `POST /api/crm/sequences/:id/enroll` — Enroll contact
-- `POST /api/crm/sequences/:id/unenroll` — Unenroll contact
-- `POST /api/crm/sequences/:id/pause-contact` — Pause contact
-- `POST /api/crm/sequences/:id/resume-contact` — Resume contact
-- `POST /api/crm/sequences/:id/advance-contact` — Advance contact to next step
-
-### Kanban
-- `GET /api/kanban` — Board state (columns + cards)
-- `POST /api/kanban/columns` — Create column
-- `PATCH /api/kanban/columns/:id` — Update column
-- `DELETE /api/kanban/columns/:id` — Delete column
-- `PUT /api/kanban/columns/reorder` — Reorder columns
-- `POST /api/kanban/cards` — Create card
-- `PATCH /api/kanban/cards/:id` — Update card
-- `DELETE /api/kanban/cards/:id` — Delete card
-- `PUT /api/kanban/cards/:id/move` — Move card between columns
-- `GET /api/kanban/cards/:id/comments` — List comments
-- `POST /api/kanban/cards/:id/comments` — Add comment
-
-### Documentation
-- `GET /api/docs` — List all doc pages
-- `GET /api/docs/:slug` — Get doc page by slug
-- `POST /api/docs` — Create doc page
-- `PUT /api/docs/:slug` — Update doc page
-- `DELETE /api/docs/:slug` — Delete doc page
-
-### Audit Trail
-- `GET /api/audit-log` — Paginated, filterable audit log
-- `GET /api/audit-log/csv` — Full CSV export
-
-### Other
-- `GET /api/usage/summary` — Usage statistics
-- `GET /api/tools` — List tools
-- `GET /api/config` — System configuration
-- `PUT /api/config` — Update configuration
-- `GET /api/models` — OpenRouter model list
-- `GET /api/models/gemini` — Gemini model list
-- `GET /api/heartbeat` — Heartbeat config
-- `GET /api/namiextend/status` — Browser extension status
-- `GET /api/integrations/google/accounts` — Google accounts
-
-## Production Build
-
-```bash
-npm run build
-npm start
-```
-
-This builds the React client and bundles the server for production deployment.
 
 ## Data Storage
 

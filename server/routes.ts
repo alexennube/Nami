@@ -637,6 +637,28 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/lmstudio/models", async (_req, res) => {
+    try {
+      const { getLmStudioBaseUrl } = await import("./openrouter");
+      const baseURL = await getLmStudioBaseUrl();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const response = await fetch(`${baseURL}/models`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!response.ok) throw new Error(`LM Studio server returned ${response.status} at ${baseURL}`);
+      const data = await response.json() as any;
+      const models = (data.data || []).map((m: any) => ({
+        id: m.id,
+        name: m.id,
+        context_length: m.context_length || 4096,
+        pricing: { prompt: "0", completion: "0" },
+      }));
+      res.json(models);
+    } catch (error: any) {
+      res.status(503).json({ message: `LM Studio not reachable: ${error.message}`, models: [] });
+    }
+  });
+
   app.post("/api/config/test-gemini", async (_req, res) => {
     try {
       const result = await testGeminiConnection();

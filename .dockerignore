@@ -1,0 +1,14 @@
+node_modules
+dist
+.nami-data
+.git
+.gitignore
+.env
+.replit
+.config
+.local
+.cache
+.upm
+replit.md
+replit_agent
+*.log
