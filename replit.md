@@ -4,10 +4,9 @@
 Nami is an enterprise-grade multi-agent orchestration system for AgentNami.com. It manages hierarchical agent structures (Nami -> Spawns -> Swarms -> SwarmQueens) and integrates with OpenRouter.ai BYOK for multi-model inference. It features an autonomous heartbeat system for continuous agent monitoring, enabling sophisticated workflow automation and task delegation across various AI models. The project aims to provide a robust, scalable, and self-improving platform for agentic operations.
 
 ## User Preferences
-- Node.js/TypeScript only (CTO requirement for desktop app compatibility)
+- Node.js/TypeScript only ()
 - OpenRouter.ai for inference (not OpenAI directly)
 - BYOK (Bring Your Own Key) support for future .exe packaging
-- Enterprise-focused, Windows-compatible design
 - Swarm = Workflow (no separate workflow concept)
 - OpenClaw-style heartbeat for autonomous agent operation
 - Dark green-tinted UI theme
