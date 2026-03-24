@@ -235,9 +235,13 @@ export async function bootEngine(): Promise<void> {
   startScheduleChecker();
 
   try {
-    const { startSequenceEngine } = await import("./routes");
-    startSequenceEngine();
-    log("Sequence execution engine started on boot", "engine");
+    const starter = (globalThis as any).__startSequenceEngine;
+    if (typeof starter === "function") {
+      starter();
+      log("Sequence execution engine started on boot", "engine");
+    } else {
+      log("Sequence engine not yet registered (routes not loaded yet)", "engine");
+    }
   } catch (err: any) {
     log(`Sequence engine boot error: ${err.message}`, "engine");
   }
@@ -260,6 +264,11 @@ export async function startEngine(): Promise<EngineState> {
     startHeartbeat();
   }
 
+  const seqStarter = (globalThis as any).__startSequenceEngine;
+  if (typeof seqStarter === "function") {
+    try { seqStarter(); } catch (err: any) { log(`Sequence engine start error: ${err.message}`, "engine"); }
+  }
+
   engineMind.initialize().then(ok => {
     if (ok) log("Engine Mind (Pi) initialized on start", "engine");
   }).catch(err => log(`Engine Mind start error: ${err.message}`, "engine"));
@@ -275,6 +284,10 @@ export async function startEngine(): Promise<EngineState> {
 
 export async function pauseEngine(): Promise<EngineState> {
   stopHeartbeat();
+  const seqStopper = (globalThis as any).__stopSequenceEngine;
+  if (typeof seqStopper === "function") {
+    try { seqStopper(); } catch (err: any) { log(`Sequence engine stop error: ${err.message}`, "engine"); }
+  }
   const state = await storage.setEngineState("paused");
   await eventBus.emit("system", { message: "Engine paused" }, "nami");
   log("Engine paused", "engine");
@@ -283,6 +296,10 @@ export async function pauseEngine(): Promise<EngineState> {
 
 export async function stopEngine(): Promise<EngineState> {
   stopHeartbeat();
+  const seqStopper = (globalThis as any).__stopSequenceEngine;
+  if (typeof seqStopper === "function") {
+    try { seqStopper(); } catch (err: any) { log(`Sequence engine stop error: ${err.message}`, "engine"); }
+  }
   engineMind.shutdown().catch(err => log(`Engine Mind shutdown error: ${err.message}`, "engine"));
   const state = await storage.setEngineState("stopped");
   await eventBus.emit("system", { message: "Engine stopped" }, "nami");

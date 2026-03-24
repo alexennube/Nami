@@ -52,18 +52,34 @@ client/                  React SPA (Vite + Shadcn UI + Tailwind)
                          Heartbeat, Thoughts, Memory, Skills, Activity...
     components/          Sidebar, configurable table, status badge, theme toggle, UI kit
     lib/                 WebSocket client, query client, theme provider, utils
+modules/                 Self-contained, reusable feature modules
+  kanban/                Kanban board module (schema, db, routes, tool, frontend pages)
+    index.ts             Module barrel export
+    shared/schema.ts     Kanban-specific TypeScript types
+    server/db.ts         createKanbanDb(pool) factory — DB layer
+    server/routes.ts     registerKanbanRoutes(app, db, logAudit) — API routes
+    server/tool.ts       createKanbanTool(db, logAudit) — agent tool factory
+    client/pages/        Kanban frontend pages (reference copy)
+  crm/                   CRM module (schema, db, routes, tool, sequence engine, frontend pages)
+    index.ts             Module barrel export
+    shared/schema.ts     CRM-specific TypeScript types
+    server/db.ts         createCrmDb(pool) factory — DB layer
+    server/routes.ts     registerCrmRoutes(app, deps) — API routes
+    server/tool.ts       createCrmTool(db, logAudit, getAnalyzer) — agent tool factory
+    server/sequence-engine.ts  Sequence execution + intelligence analyzer factories
+    client/pages/        CRM frontend pages (reference copy)
 server/
   index.ts               Express server entry point
   engine.ts              Core orchestration (heartbeat, agents, swarms, chat)
   openrouter.ts          OpenRouter.ai client with pricing cache
   gemini.ts              Google Gemini inference client
-  tools.ts               Tool registry (file, shell, web, CRM, kanban, browser, X, MCP, docs)
+  tools.ts               Tool registry — imports kanban/CRM tools from module factories
   storage.ts             In-memory storage with JSON disk persistence
-  db-persist.ts          PostgreSQL persistence layer
+  db-persist.ts          PostgreSQL persistence — creates module DB instances, re-exports legacy aliases
   engine-mind.ts         Pi framework integration (self-healing, compaction)
   audit.ts               Audit trail logging
   namiextend.ts          Browser extension WebSocket bridge
-  routes.ts              REST API + WebSocket setup
+  routes.ts              REST API + WebSocket setup — registers module routes
   x-api.ts               X (Twitter) API client
   toolExecutionGuard.ts  Tool execution safety layer
   toolValidation.ts      Tool input validation
@@ -73,6 +89,14 @@ shared/
   schema.ts              TypeScript types and Zod schemas
 .nami-data/              Runtime data (auto-created, gitignored)
 ```
+
+## Module Architecture
+CRM and Kanban are modularized under `modules/` using a factory/dependency injection pattern:
+- **DB factories** (`createKanbanDb(pool)`, `createCrmDb(pool)`) accept a PostgreSQL pool and return a db operations object
+- **Route registrars** (`registerKanbanRoutes`, `registerCrmRoutes`) accept Express app + dependencies
+- **Tool factories** (`createKanbanTool`, `createCrmTool`) return NamiTool objects for the agent tool registry
+- **Backward compatibility**: `server/db-persist.ts` creates module instances and re-exports all legacy `dbGet*`/`dbUpsert*`/`dbDelete*` functions
+- **Sequence engine lifecycle**: Managed via `globalThis.__startSequenceEngine` / `__stopSequenceEngine`, called on engine start/pause/stop
 
 ## External Dependencies
 - **OpenRouter.ai:** For multi-model AI inference via BYOK.
